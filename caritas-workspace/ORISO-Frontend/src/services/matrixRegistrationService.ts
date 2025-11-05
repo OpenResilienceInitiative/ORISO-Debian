@@ -20,8 +20,8 @@ export const registerMatrixUser = async (
     try {
         console.log("🔧 Attempting Matrix registration for user:", registrationData.username);
         
-        // Matrix server URL
-        const homeserverUrl = "http://91.99.219.182:8008";
+        // Matrix server URL from environment variable
+        const homeserverUrl = process.env.REACT_APP_MATRIX_HOMESERVER_URL || "http://91.99.219.182:8008";
         
         // Create Matrix client
         const client = createClient({
@@ -79,8 +79,8 @@ export const loginMatrixUser = async (
     try {
         console.log("🔧 Attempting Matrix login for user:", username);
         
-        // Matrix server URL
-        const homeserverUrl = "http://91.99.219.182:8008";
+        // Matrix server URL from environment variable
+        const homeserverUrl = process.env.REACT_APP_MATRIX_HOMESERVER_URL || "http://91.99.219.182:8008";
         
         // Create Matrix client
         const client = createClient({

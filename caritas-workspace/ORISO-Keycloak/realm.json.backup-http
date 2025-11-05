@@ -572,8 +572,7 @@
       "redirectUris": [
         "/realms/online-beratung/account/*"
       ],
-      "webOrigins": [
-        "https://admin.oriso.site/*",],
+      "webOrigins": [],
       "notBefore": 0,
       "bearerOnly": false,
       "consentRequired": false,
@@ -611,8 +610,7 @@
       "redirectUris": [
         "/realms/online-beratung/account/*"
       ],
-      "webOrigins": [
-        "https://admin.oriso.site/*",],
+      "webOrigins": [],
       "notBefore": 0,
       "bearerOnly": false,
       "consentRequired": false,
@@ -657,8 +655,7 @@
       "alwaysDisplayInConsole": false,
       "clientAuthenticatorType": "client-secret",
       "redirectUris": [],
-      "webOrigins": [
-        "https://admin.oriso.site/*",],
+      "webOrigins": [],
       "notBefore": 0,
       "bearerOnly": false,
       "consentRequired": false,
@@ -697,12 +694,10 @@
       "clientAuthenticatorType": "client-secret",
       "redirectUris": [
         "*",
-        "https://admin.oriso.site/*",
         "http://91.99.219.182:9000/*",
         "http://localhost:9000/*"
       ],
       "webOrigins": [
-        "https://admin.oriso.site/*",
         "*",
         "http://91.99.219.182:9000/*"
       ],
@@ -751,8 +746,7 @@
       "alwaysDisplayInConsole": false,
       "clientAuthenticatorType": "client-secret",
       "redirectUris": [],
-      "webOrigins": [
-        "https://admin.oriso.site/*",],
+      "webOrigins": [],
       "notBefore": 0,
       "bearerOnly": true,
       "consentRequired": false,
@@ -781,8 +775,7 @@
       "alwaysDisplayInConsole": false,
       "clientAuthenticatorType": "client-secret",
       "redirectUris": [],
-      "webOrigins": [
-        "https://admin.oriso.site/*",],
+      "webOrigins": [],
       "notBefore": 0,
       "bearerOnly": true,
       "consentRequired": false,
@@ -816,7 +809,6 @@
         "/admin/online-beratung/console/*"
       ],
       "webOrigins": [
-        "https://admin.oriso.site/*",
         "+"
       ],
       "notBefore": 0,

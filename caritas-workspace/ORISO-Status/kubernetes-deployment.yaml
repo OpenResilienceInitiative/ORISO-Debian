@@ -1,0 +1,41 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: status-page
+  namespace: caritas
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: status-page
+  template:
+    metadata:
+      labels:
+        app: status-page
+    spec:
+      containers:
+      - name: status-page
+        image: oriso-status:latest
+        imagePullPolicy: Never
+        env:
+        - name: PORT
+          value: "9200"
+        ports:
+        - containerPort: 9200
+          name: http
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: status-page
+  namespace: caritas
+spec:
+  type: LoadBalancer
+  externalIPs:
+  - 91.99.219.182
+  selector:
+    app: status-page
+  ports:
+  - port: 9200
+    targetPort: 9200
+    name: http

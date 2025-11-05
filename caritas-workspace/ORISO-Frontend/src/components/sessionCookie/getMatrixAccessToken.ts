@@ -12,8 +12,8 @@ export const getMatrixAccessToken = (
     password: string
 ): Promise<MatrixLoginData> =>
     new Promise((resolve, reject) => {
-        // Use existing Matrix Synapse server
-        const homeserverUrl = "http://91.99.219.182:8008";
+        // Use existing Matrix Synapse server from environment variable
+        const homeserverUrl = process.env.REACT_APP_MATRIX_HOMESERVER_URL || "http://91.99.219.182:8008";
         
         // Create Matrix client
         const client = createClient({

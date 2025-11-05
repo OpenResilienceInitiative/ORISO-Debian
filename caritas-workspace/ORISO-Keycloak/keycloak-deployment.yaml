@@ -37,6 +37,14 @@ spec:
           value: admin
         - name: KEYCLOAK_ADMIN_PASSWORD
           value: admin
+        - name: KC_PROXY
+          value: edge
+        - name: KC_HOSTNAME
+          value: auth.oriso.site
+        - name: KC_HOSTNAME_STRICT_HTTPS
+          value: "true"
+        - name: KC_HTTP_ENABLED
+          value: "true"
         image: quay.io/keycloak/keycloak:20.0.5
         imagePullPolicy: IfNotPresent
         name: keycloak

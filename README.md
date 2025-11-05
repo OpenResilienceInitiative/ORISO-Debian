@@ -2,10 +2,11 @@
 
 **The Ultimate Step-by-Step Guide for AI Agents & Developers**
 
-**Version**: 1.0.0  
-**Last Updated**: October 31, 2025  
+**Version**: 2.0.0  
+**Last Updated**: November 5, 2025  
 **Platform**: ORISO (Online Beratung)  
-**Target**: Fresh Ubuntu Server (20.04/22.04)
+**Target**: Fresh Ubuntu Server (20.04/22.04)  
+**Status**: Production Ready with HTTPS & Subdomains
 
 ---
 
@@ -26,11 +27,29 @@
 13. [Deploy Nginx Proxy](#13-deploy-nginx-proxy)
 14. [Deploy Monitoring](#14-deploy-monitoring)
 15. [Post-Deployment Configuration](#15-post-deployment-configuration)
-16. [DNS & SSL Setup](#16-dns--ssl-setup)
+16. [DNS & SSL Setup](#16-dns--ssl-setup) ⭐ **Important for HTTPS**
 17. [Verification & Testing](#17-verification--testing)
 18. [Backup Configuration](#18-backup-configuration)
 19. [Security Hardening](#19-security-hardening)
 20. [Troubleshooting](#20-troubleshooting)
+
+---
+
+## ⚠️ Deployment Order for HTTPS Setup
+
+**For HTTPS/Production deployment, follow this order:**
+
+1. **Complete sections 1-14** (deploy all services on HTTP/ports)
+2. **Section 16.1**: Configure DNS A records for all subdomains
+3. **Section 16.2**: Install cert-manager
+4. **Section 16.3**: Configure Ingress with TLS annotations
+5. **Section 16.4**: Deploy Ingress resources for each service
+6. **Section 8.1-8.3**: Update Keycloak and backend services for HTTPS
+7. **Section 11.1**: Update frontend environment variables for HTTPS
+8. **Section 16.5**: Verify SSL certificates are issued
+9. **Section 17**: Test all HTTPS endpoints
+
+**Note**: Services remain accessible via HTTP ports during HTTPS migration. HTTPS becomes primary access method once certificates are issued.
 
 ---
 
@@ -63,15 +82,16 @@
 - **SSH Access**: Root or sudo user
 - **Internet Access**: Required for package installation
 - **Public IP**: Required for external access
-- **Domain Name**: Optional (for SSL/DNS)
+- **Domain Name**: Required for HTTPS/SSL setup (e.g., `oriso.site`)
+- **DNS Access**: Ability to add A records for subdomains
 
 ### 1.3 Network Requirements
 
 #### Required Ports (External Access)
 - `22` - SSH
-- `80` - HTTP (optional, for Let's Encrypt)
-- `443` - HTTPS (optional)
-- `8089` - Nginx Proxy (main entry point)
+- `80` - HTTP (required for Let's Encrypt certificate validation)
+- `443` - HTTPS (primary access method via Traefik Ingress)
+- `8089` - Nginx Proxy (legacy HTTP access, optional)
 
 #### Required Ports (Internal/Services)
 - `3306` - MariaDB
@@ -657,20 +677,62 @@ kubectl logs deployment/keycloak -n caritas -f
 
 ## 8. Configure Keycloak
 
-### 8.1 Configure HTTP Access (CRITICAL!)
+### 8.1 Keycloak HTTPS Configuration (Production Setup)
 
-**This step is MANDATORY for authentication to work!**
+**For HTTPS/Production deployment, Keycloak must be configured for proxy mode:**
 
 ```bash
-# Wait for Keycloak to be fully ready (60 seconds after pod is running)
-sleep 60
+# Verify Keycloak deployment has HTTPS environment variables
+kubectl get deployment keycloak -n caritas -o yaml | grep -A 10 "KC_"
 
-# Run HTTP configuration script
-cd ~/online-beratung/caritas-workspace/ORISO-Kubernetes
-./scripts/configure-keycloak-http.sh
+# Required environment variables for HTTPS:
+# - KC_PROXY=edge
+# - KC_HOSTNAME=auth.oriso.site
+# - KC_HOSTNAME_STRICT_HTTPS=true
+# - KC_HTTP_ENABLED=true
+# - KEYCLOAK_ADMIN_PASSWORD=<your-password>
+```
 
-# Or manual configuration:
+**These are configured in the Keycloak deployment YAML. Verify they exist:**
+
+```bash
+# Check Keycloak deployment
+kubectl describe deployment keycloak -n caritas | grep -A 20 Environment
+
+# Should include:
+# KC_PROXY=edge
+# KC_HOSTNAME=auth.oriso.site
+# KC_HOSTNAME_STRICT_HTTPS=true
+# KEYCLOAK_ADMIN_PASSWORD=admin
+```
+
+**If missing, update the deployment:**
+
+```bash
+# Update Keycloak deployment with HTTPS settings
+kubectl set env deployment/keycloak -n caritas \
+  KC_PROXY=edge \
+  KC_HOSTNAME=auth.oriso.site \
+  KC_HOSTNAME_STRICT_HTTPS=true \
+  KC_HTTP_ENABLED=true \
+  KEYCLOAK_ADMIN_PASSWORD=admin
+
+# Restart Keycloak
+kubectl rollout restart deployment/keycloak -n caritas
+
+# Wait for restart
+kubectl rollout status deployment/keycloak -n caritas
+```
+
+### 8.2 Configure Realm SSL Requirements
+
+**After HTTPS is configured, set realm SSL requirements:**
+
+```bash
+# Wait for Keycloak to be fully ready
 KEYCLOAK_POD=$(kubectl get pods -n caritas -l app=keycloak -o jsonpath="{.items[0].metadata.name}")
+kubectl wait --for=condition=ready pod/$KEYCLOAK_POD -n caritas --timeout=300s
+sleep 30
 
 # Configure kcadm credentials
 kubectl exec -n caritas $KEYCLOAK_POD -- \
@@ -680,21 +742,41 @@ kubectl exec -n caritas $KEYCLOAK_POD -- \
   --user admin \
   --password admin
 
-# Disable SSL for master realm
+# For HTTPS setup, set SSL to external (requires HTTPS from outside, HTTP internally)
 kubectl exec -n caritas $KEYCLOAK_POD -- \
-  /opt/keycloak/bin/kcadm.sh update realms/master -s sslRequired=NONE
+  /opt/keycloak/bin/kcadm.sh update realms/master -s sslRequired=external
 
-# Disable SSL for all realms
-kubectl exec -n caritas $KEYCLOAK_POD -- bash -c '
-/opt/keycloak/bin/kcadm.sh config credentials --server http://localhost:8080 --realm master --user admin --password admin
-for r in $(/opt/keycloak/bin/kcadm.sh get realms --fields realm --format csv | tail -n +2); do
-  echo "Processing realm: $r"
-  /opt/keycloak/bin/kcadm.sh update realms/"$r" -s sslRequired=NONE
-done'
+# Update online-beratung realm
+kubectl exec -n caritas $KEYCLOAK_POD -- \
+  /opt/keycloak/bin/kcadm.sh update realms/online-beratung -s sslRequired=external
 
 # Verify
 kubectl exec -n caritas $KEYCLOAK_POD -- \
-  /opt/keycloak/bin/kcadm.sh get realms/master --fields sslRequired
+  /opt/keycloak/bin/kcadm.sh get realms/online-beratung --fields sslRequired
+```
+
+### 8.3 Update Backend Services for HTTPS Keycloak
+
+**All backend services must use HTTPS Keycloak issuer URL:**
+
+```bash
+# Update all backend services with HTTPS Keycloak URLs
+for service in tenantservice userservice agencyservice consultingtypeservice uploadservice videoservice; do
+  kubectl set env deployment/$service -n caritas \
+    SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_ISSUER_URI=https://auth.oriso.site/realms/online-beratung \
+    KEYCLOAK_AUTH_SERVER_URL=https://auth.oriso.site
+  echo "✅ Updated $service"
+done
+
+# Restart services to apply changes
+for service in tenantservice userservice agencyservice consultingtypeservice uploadservice videoservice; do
+  kubectl rollout restart deployment/$service -n caritas
+done
+
+# Wait for all services to restart
+kubectl rollout status deployment/tenantservice -n caritas
+kubectl rollout status deployment/userservice -n caritas
+kubectl rollout status deployment/agencyservice -n caritas
 ```
 
 ### 8.2 Import Keycloak Realm
@@ -861,7 +943,41 @@ kubectl logs deployment/userservice -n caritas --tail=100
 
 ## 11. Deploy Frontend
 
-### 11.1 Deploy Frontend and Admin
+### 11.1 Configure Frontend Environment Variables
+
+**Before deploying, configure environment variables for HTTPS:**
+
+```bash
+cd ~/online-beratung/caritas-workspace/ORISO-Frontend
+
+# Update .env file or ConfigMap with HTTPS URLs
+# Required environment variables:
+# VITE_API_URL=https://api.oriso.site
+# VITE_MATRIX_HOMESERVER=https://matrix.oriso.site
+# VITE_KEYCLOAK_URL=https://auth.oriso.site
+# VITE_ELEMENT_URL=https://app.beta.oriso.site
+
+# For Kubernetes deployment, update the deployment YAML:
+# - VITE_API_URL=https://api.oriso.site
+# - VITE_MATRIX_HOMESERVER=https://matrix.oriso.site
+```
+
+**Update Frontend deployment environment:**
+
+```bash
+# Update frontend deployment with HTTPS API URL
+kubectl set env deployment/frontend -n caritas \
+  VITE_API_URL=https://api.oriso.site \
+  VITE_MATRIX_HOMESERVER=https://matrix.oriso.site \
+  VITE_ELEMENT_URL=https://app.beta.oriso.site
+
+# Update admin deployment
+kubectl set env deployment/admin -n caritas \
+  VITE_API_URL=https://api.oriso.site \
+  VITE_KEYCLOAK_URL=https://auth.oriso.site
+```
+
+### 11.2 Deploy Frontend and Admin
 
 ```bash
 cd ~/online-beratung/caritas-workspace/ORISO-Kubernetes
@@ -880,21 +996,31 @@ kubectl get pods -n caritas | grep -E "frontend|admin"
 # admin-xxx       1/1     Running
 ```
 
-### 11.2 Verify Frontend Access
+### 11.3 Verify Frontend Access
 
 ```bash
-# Check Frontend (should return HTML)
+# Check Frontend via HTTPS
+curl -I https://app.oriso.site
+# Expected: HTTP/2 200
+
+# Check Admin via HTTPS
+curl -I https://admin.oriso.site
+# Expected: HTTP/2 200
+
+# Check Frontend (legacy HTTP)
 curl -I http://127.0.0.1:9001
 # Expected: HTTP/1.1 200 OK
 
-# Check Admin (should return HTML)
+# Check Admin (legacy HTTP)
 curl -I http://127.0.0.1:9002
 # Expected: HTTP/1.1 200 OK
 
 # Access in browser
-SERVER_IP=$(hostname -I | awk '{print $1}')
-echo "Frontend: http://$SERVER_IP:9001"
-echo "Admin: http://$SERVER_IP:9002"
+DOMAIN="oriso.site"
+echo "Frontend (HTTPS): https://app.$DOMAIN"
+echo "Admin (HTTPS): https://admin.$DOMAIN"
+echo "Frontend (HTTP): http://$(hostname -I | awk '{print $1}'):9001"
+echo "Admin (HTTP): http://$(hostname -I | awk '{print $1}'):9002"
 ```
 
 ---
@@ -980,12 +1106,12 @@ echo "Main Entry Point: http://$SERVER_IP:8089"
 
 ## 14. Deploy Monitoring
 
-### 14.1 Deploy Health Dashboard
+### 14.1 Deploy Legacy Health Dashboard
 
 ```bash
 cd ~/online-beratung/caritas-workspace/ORISO-Kubernetes
 
-# Deploy health dashboard
+# Deploy health dashboard (legacy)
 kubectl apply -f deployments/10-monitoring.yaml
 
 # Wait for health dashboard
@@ -993,9 +1119,39 @@ kubectl wait --for=condition=ready pod -l app=health-dashboard -n caritas --time
 
 # Check status
 kubectl get pods -n caritas | grep health-dashboard
+
+# Access: https://health.oriso.site (port 9100)
 ```
 
-### 14.2 Deploy SignOZ (Optional)
+### 14.2 Deploy New Status Page (Recommended)
+
+**The new status page provides a professional monitoring interface:**
+
+```bash
+cd ~/online-beratung/caritas-workspace/ORISO-Status
+
+# Deploy status page
+kubectl apply -f deployment.yaml
+kubectl apply -f service.yaml
+kubectl apply -f ingress.yaml
+
+# Wait for status page
+kubectl wait --for=condition=ready pod -l app=status-page -n caritas --timeout=180s
+
+# Check status
+kubectl get pods -n caritas | grep status-page
+
+# Access: https://status.oriso.site (port 9200)
+```
+
+**Features:**
+- Modern React-based UI with Tailwind CSS
+- Kubernetes service discovery integration
+- Real-time service health monitoring
+- Professional status page design
+- Runs on port 9200 (separate from legacy health dashboard on 9100)
+
+### 14.3 Deploy SignOZ (Optional)
 
 ```bash
 cd ~/online-beratung/caritas-workspace/ORISO-SignOZ
@@ -1084,37 +1240,49 @@ curl -I http://127.0.0.1:9021
 
 ```bash
 SERVER_IP=$(hostname -I | awk '{print $1}')
+DOMAIN="oriso.site"  # Replace with your domain
 
 cat <<EOF
 
 ════════════════════════════════════════════════════════════
-  ORISO Platform - Access URLs
+  ORISO Platform - Access URLs (HTTPS)
 ════════════════════════════════════════════════════════════
 
-Main Entry Point:
-  Nginx Proxy: http://$SERVER_IP:8089
+🌐 HTTPS URLs (Primary Access Method):
+  Frontend:         https://app.$DOMAIN
+  Admin Panel:      https://admin.$DOMAIN
+  API Gateway:      https://api.$DOMAIN
+  Authentication:   https://auth.$DOMAIN/admin/
+                      (Login: admin / admin)
+  Matrix Synapse:   https://matrix.$DOMAIN
+  Element UI:       https://app.beta.$DOMAIN
+  Status Page:      https://status.$DOMAIN
+  Health Dashboard: https://health.$DOMAIN
+  SignOZ:           https://signoz.$DOMAIN (if deployed)
+  Redis Commander:  https://redis.$DOMAIN
 
-Frontend:
-  Frontend:    http://$SERVER_IP:9001
-  Admin:       http://$SERVER_IP:9002
+🔗 Legacy HTTP URLs (Fallback):
+  Nginx Proxy:      http://$SERVER_IP:8089
+  Frontend:         http://$SERVER_IP:9001
+  Admin:            http://$SERVER_IP:9002
+  Keycloak:         http://$SERVER_IP:8080
+  Element.io:       http://$SERVER_IP:8087
+  Matrix:           http://$SERVER_IP:8008
+  Health Dashboard: http://$SERVER_IP:9100
 
-Authentication:
-  Keycloak:    http://$SERVER_IP:8089/auth/admin/
-  (Login: admin / admin)
-
-Communication:
-  Element.io:  http://$SERVER_IP:8087
-
-Monitoring:
-  Redis Cmdr:  http://$SERVER_IP:9021
-  Health Dash: http://$SERVER_IP:9100
-  SignOZ:      http://$SERVER_IP:3001 (if deployed)
-
-Backend Services (Health Checks):
+🔧 Backend Services (Health Checks - Internal):
   TenantService:         http://$SERVER_IP:8081/actuator/health
   UserService:           http://$SERVER_IP:8082/actuator/health
   ConsultingTypeService: http://$SERVER_IP:8083/actuator/health
   AgencyService:         http://$SERVER_IP:8084/actuator/health
+  UploadService:         http://$SERVER_IP:8085/actuator/health
+  VideoService:          http://$SERVER_IP:8086/actuator/health
+
+📋 Note:
+  - All HTTPS URLs require DNS A records configured
+  - SSL certificates are automatically provisioned by cert-manager
+  - Certificates auto-renew 30 days before expiration
+  - Legacy HTTP URLs are available but not recommended for production
 
 ════════════════════════════════════════════════════════════
 
@@ -1125,56 +1293,189 @@ EOF
 
 ## 16. DNS & SSL Setup
 
-### 16.1 Configure DNS (Optional)
+### 16.1 Configure DNS Records
 
-If you have a domain name:
+**Required DNS A Records** (replace `oriso.site` with your domain):
 
 ```bash
-# In your DNS provider:
-# Add A record pointing to your server IP
-# Example:
-# oriso.yourdomain.com → YOUR_SERVER_IP
-# *.oriso.yourdomain.com → YOUR_SERVER_IP (for subdomains)
+# Core Services
+status.oriso.site      → YOUR_SERVER_IP    # New Status Page (port 9200)
+health.oriso.site      → YOUR_SERVER_IP    # Legacy Health Dashboard (port 9100)
+app.oriso.site         → YOUR_SERVER_IP    # Frontend (port 9001)
+api.oriso.site         → YOUR_SERVER_IP    # API Gateway (port 8089)
+admin.oriso.site       → YOUR_SERVER_IP    # Admin Panel (port 9000)
+auth.oriso.site        → YOUR_SERVER_IP    # Keycloak (port 8080)
+
+# Communication Services
+matrix.oriso.site      → YOUR_SERVER_IP    # Matrix Synapse (port 8008)
+app.beta.oriso.site    → YOUR_SERVER_IP    # Element UI (port 8087)
+
+# Monitoring & Management
+signoz.oriso.site      → YOUR_SERVER_IP    # SignOZ (port 3001)
+redis.oriso.site       → YOUR_SERVER_IP    # Redis Commander (port 9021)
 ```
 
-### 16.2 Install Certbot for Let's Encrypt (Optional)
+**DNS Configuration Steps:**
+1. Log in to your domain registrar/DNS provider
+2. Navigate to DNS management
+3. Add A records for each subdomain pointing to your server's public IP
+4. Set TTL to 300-600 seconds for faster propagation during setup
+5. Wait 5-10 minutes for DNS propagation (use `dig status.oriso.site` to verify)
+
+### 16.2 Install Cert-Manager for Automatic SSL
+
+**Cert-manager automatically provisions SSL certificates from Let's Encrypt:**
 
 ```bash
-# Install Certbot
-sudo apt install -y certbot python3-certbot-nginx
+# Install cert-manager
+kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.13.0/cert-manager.yaml
 
-# Get SSL certificate (requires port 80 open and DNS configured)
-sudo certbot certonly --standalone -d yourdomain.com -d www.yourdomain.com
+# Wait for cert-manager to be ready (2-3 minutes)
+kubectl wait --for=condition=ready pod -l app.kubernetes.io/instance=cert-manager -n cert-manager --timeout=300s
 
-# Certificate will be saved to:
-# /etc/letsencrypt/live/yourdomain.com/fullchain.pem
-# /etc/letsencrypt/live/yourdomain.com/privkey.pem
+# Verify installation
+kubectl get pods -n cert-manager
+# Should see: cert-manager-xxx, cert-manager-cainjector-xxx, cert-manager-webhook-xxx
 
-# Setup auto-renewal
-sudo systemctl enable certbot.timer
-sudo systemctl start certbot.timer
+# Create ClusterIssuer for Let's Encrypt
+cat <<EOF | kubectl apply -f -
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: letsencrypt-prod
+spec:
+  acme:
+    server: https://acme-v02.api.letsencrypt.org/directory
+    email: your-email@example.com  # Replace with your email
+    privateKeySecretRef:
+      name: letsencrypt-prod
+    solvers:
+    - http01:
+        ingress:
+          class: traefik
+EOF
+
+# Verify ClusterIssuer
+kubectl get clusterissuer
+# Should show: letsencrypt-prod   Ready
 ```
 
-### 16.3 Configure Nginx with SSL (Optional)
+### 16.3 Configure Ingress with TLS
+
+**Traefik is pre-installed with k3s and handles Ingress routing:**
+
+Each service repository (ORISO-*) contains an `ingress.yaml` file that:
+- Creates an Ingress resource for HTTPS access
+- Configures TLS with automatic certificate provisioning
+- Uses Traefik as the ingress controller
+
+**Example Ingress Configuration:**
+```yaml
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: frontend-ingress
+  namespace: caritas
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+    traefik.ingress.kubernetes.io/router.entrypoints: web,websecure
+spec:
+  ingressClassName: traefik
+  tls:
+  - hosts:
+    - app.oriso.site
+    secretName: app-oriso-site-tls
+  rules:
+  - host: app.oriso.site
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: frontend
+            port:
+              number: 9001
+```
+
+### 16.4 Deploy Ingress Resources
+
+**Each service has its own ingress file in its repository:**
 
 ```bash
-# Update Nginx ConfigMap with SSL configuration
-kubectl edit configmap oriso-nginx-config -n caritas
+# Status Page
+cd ~/online-beratung/caritas-workspace/ORISO-Status
+kubectl apply -f ingress.yaml
 
-# Add SSL server block:
-# server {
-#     listen 443 ssl http2;
-#     server_name yourdomain.com;
-#     ssl_certificate /etc/ssl/certs/fullchain.pem;
-#     ssl_certificate_key /etc/ssl/certs/privkey.pem;
-#     ...
-# }
+# Frontend
+cd ~/online-beratung/caritas-workspace/ORISO-Frontend
+kubectl apply -f ingress.yaml
 
-# Mount SSL certificates as volume in Nginx deployment
-# See ORISO-Nginx/DEPLOYMENT.md for details
+# Admin Panel
+cd ~/online-beratung/caritas-workspace/ORISO-Admin
+kubectl apply -f ingress.yaml
 
-# Reload Nginx
-kubectl rollout restart deployment/cob-proxy -n caritas
+# API Gateway (Nginx)
+cd ~/online-beratung/caritas-workspace/ORISO-Nginx
+kubectl apply -f ingress.yaml
+
+# Keycloak
+cd ~/online-beratung/caritas-workspace/ORISO-Keycloak
+kubectl apply -f ingress.yaml
+
+# Matrix Synapse
+cd ~/online-beratung/caritas-workspace/ORISO-Matrix
+kubectl apply -f ingress.yaml
+
+# Element UI
+cd ~/online-beratung/caritas-workspace/ORISO-Element
+kubectl apply -f ingress.yaml
+
+# SignOZ (optional)
+cd ~/online-beratung/caritas-workspace/ORISO-SignOZ
+kubectl apply -f ingress.yaml
+
+# Redis Commander
+cd ~/online-beratung/caritas-workspace/ORISO-Redis
+kubectl apply -f ingress.yaml
+```
+
+### 16.5 Verify SSL Certificates
+
+```bash
+# Check certificate status
+kubectl get certificates -n caritas
+
+# Check certificate requests
+kubectl get certificaterequests -n caritas
+
+# Check TLS secrets
+kubectl get secrets -n caritas | grep tls
+
+# Test HTTPS access
+curl -I https://app.oriso.site
+curl -I https://api.oriso.site
+curl -I https://admin.oriso.site
+curl -I https://auth.oriso.site
+
+# Check certificate details
+kubectl describe certificate app-oriso-site-tls -n caritas
+```
+
+### 16.6 Certificate Auto-Renewal
+
+**Cert-manager automatically renews certificates 30 days before expiration:**
+
+```bash
+# Check certificate renewal status
+kubectl get certificates -n caritas -o wide
+
+# Monitor certificate events
+kubectl get events -n caritas --field-selector involvedObject.kind=Certificate --sort-by='.lastTimestamp'
+
+# Test renewal manually (if needed)
+kubectl delete certificate app-oriso-site-tls -n caritas
+# Cert-manager will automatically create a new one
 ```
 
 ---
@@ -1561,10 +1862,34 @@ kubectl get svc -n caritas mongodb
 
 #### HTTPS Required Error
 ```bash
-# This means HTTP access was not configured
-# Run the configuration script
-cd ~/online-beratung/caritas-workspace/ORISO-Kubernetes
-./scripts/configure-keycloak-http.sh
+# For HTTPS setup, ensure Keycloak proxy mode is configured
+kubectl get deployment keycloak -n caritas -o yaml | grep -A 5 "KC_PROXY"
+
+# Should show: KC_PROXY=edge
+# If missing, update:
+kubectl set env deployment/keycloak -n caritas \
+  KC_PROXY=edge \
+  KC_HOSTNAME=auth.oriso.site \
+  KC_HOSTNAME_STRICT_HTTPS=true
+
+# Restart Keycloak
+kubectl rollout restart deployment/keycloak -n caritas
+```
+
+#### 401 Unauthorized from Backend Services
+```bash
+# This usually means backend services are using wrong Keycloak issuer URL
+# Check current issuer URL:
+kubectl get deployment/tenantservice -n caritas -o yaml | grep ISSUER_URI
+
+# Should be: https://auth.oriso.site/realms/online-beratung
+# If wrong, update all backend services:
+for service in tenantservice userservice agencyservice consultingtypeservice uploadservice videoservice; do
+  kubectl set env deployment/$service -n caritas \
+    SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_ISSUER_URI=https://auth.oriso.site/realms/online-beratung \
+    KEYCLOAK_AUTH_SERVER_URL=https://auth.oriso.site
+  kubectl rollout restart deployment/$service -n caritas
+done
 ```
 
 #### Cannot Login to Keycloak
@@ -1572,7 +1897,10 @@ cd ~/online-beratung/caritas-workspace/ORISO-Kubernetes
 # Check Keycloak logs
 kubectl logs deployment/keycloak -n caritas
 
-# Verify Keycloak is accessible
+# Verify Keycloak is accessible via HTTPS
+curl -I https://auth.oriso.site
+
+# Verify Keycloak is accessible via HTTP (internal)
 curl -I http://127.0.0.1:8080
 
 # Reset admin password if needed (see Section 19.1)
@@ -1596,7 +1924,66 @@ kubectl exec -n caritas $KEYCLOAK_POD -- \
 # If realm missing, re-import (see Section 8.2)
 ```
 
-### 20.5 Backend Service Issues
+### 20.5 HTTPS & SSL Certificate Issues
+
+#### Certificate Not Issued
+```bash
+# Check cert-manager pods
+kubectl get pods -n cert-manager
+
+# Check certificate status
+kubectl get certificates -n caritas
+
+# Check certificate requests
+kubectl get certificaterequests -n caritas
+
+# Check events for errors
+kubectl get events -n caritas --sort-by='.lastTimestamp' | grep Certificate
+
+# Common issues:
+# - DNS not propagated (wait 5-10 minutes)
+# - Port 80 not accessible (check firewall)
+# - Wrong email in ClusterIssuer
+```
+
+#### Certificate Expired or Not Renewing
+```bash
+# Check certificate expiration
+kubectl get certificates -n caritas -o jsonpath='{range .items[*]}{.metadata.name}{"\t"}{.status.notAfter}{"\n"}{end}'
+
+# Cert-manager auto-renews 30 days before expiration
+# Manually trigger renewal:
+kubectl delete certificate <cert-name> -n caritas
+# Cert-manager will create a new one automatically
+```
+
+#### Mixed Content Errors (HTTPS Frontend, HTTP Backend)
+```bash
+# This happens when frontend uses HTTPS but backend API uses HTTP
+# Solution: Update frontend environment variables:
+kubectl set env deployment/frontend -n caritas \
+  VITE_API_URL=https://api.oriso.site
+
+# Also ensure API gateway has HTTPS ingress configured
+kubectl get ingress -n caritas | grep api
+```
+
+#### Ingress Not Routing Correctly
+```bash
+# Check Traefik ingress controller
+kubectl get pods -n kube-system | grep traefik
+
+# Check ingress resources
+kubectl get ingress -n caritas
+
+# Check ingress details
+kubectl describe ingress <ingress-name> -n caritas
+
+# Check Traefik logs
+kubectl logs -n kube-system -l app.kubernetes.io/name=traefik --tail=100
+```
+
+### 20.6 Backend Service Issues
 
 #### Service Returns 500 Error
 ```bash
@@ -1626,7 +2013,7 @@ curl http://127.0.0.1:<port>/actuator/health/redis | jq .
 kubectl rollout restart deployment/<service-name> -n caritas
 ```
 
-### 20.6 Frontend Issues
+### 20.7 Frontend Issues
 
 #### Frontend Shows White Screen
 ```bash
@@ -1654,7 +2041,7 @@ kubectl get configmap oriso-nginx-config -n caritas -o yaml | grep -A 10 "add_he
 curl -I http://127.0.0.1:8081/actuator/health
 ```
 
-### 20.7 Useful Debug Commands
+### 20.8 Useful Debug Commands
 
 ```bash
 # Check all pods status
@@ -1729,22 +2116,31 @@ kubectl exec -it deployment/<name> -n caritas -- /bin/bash
 curl http://127.0.0.1:<port>/actuator/health
 ```
 
-### Critical Ports
+### Critical URLs & Ports
 
-| Service | Port | Health Check |
-|---------|------|--------------|
+#### HTTPS URLs (Production)
+| Service | HTTPS URL | Internal Port | Health Check |
+|---------|-----------|---------------|--------------|
+| Frontend | https://app.oriso.site | 9001 | / |
+| Admin | https://admin.oriso.site | 9000 | / |
+| API Gateway | https://api.oriso.site | 8089 | / |
+| Keycloak | https://auth.oriso.site | 8080 | /auth |
+| Matrix | https://matrix.oriso.site | 8008 | /_matrix/client/versions |
+| Element | https://app.beta.oriso.site | 8087 | / |
+| Status Page | https://status.oriso.site | 9200 | / |
+| Health Dashboard | https://health.oriso.site | 9100 | / |
+
+#### Backend Services (Internal)
+| Service | Internal Port | Health Check |
+|---------|---------------|--------------|
 | TenantService | 8081 | /actuator/health |
 | UserService | 8082 | /actuator/health |
 | ConsultingTypeService | 8083 | /actuator/health |
 | AgencyService | 8084 | /actuator/health |
-| Frontend | 9001 | / |
-| Admin | 9002 | / |
-| Keycloak | 8080 | /auth |
-| Matrix | 8008 | /_matrix/client/versions |
-| Element | 8087 | / |
-| Nginx | 8089 | / |
+| UploadService | 8085 | /actuator/health |
+| VideoService | 8086 | /actuator/health |
 
-### Important Files
+### Important Files & Directories
 
 ```bash
 # Kubernetes configs
@@ -1756,6 +2152,12 @@ curl http://127.0.0.1:<port>/actuator/health
 # Keycloak realm
 ~/online-beratung/caritas-workspace/ORISO-Keycloak/realm.json
 
+# Ingress configurations (each service has ingress.yaml)
+~/online-beratung/caritas-workspace/ORISO-*/ingress.yaml
+
+# Status Page (new)
+~/online-beratung/caritas-workspace/ORISO-Status/
+
 # Nginx config
 kubectl get configmap oriso-nginx-config -n caritas -o yaml
 
@@ -1764,6 +2166,10 @@ kubectl get configmap oriso-nginx-config -n caritas -o yaml
 
 # k3s config
 /etc/rancher/k3s/k3s.yaml
+
+# SSL Certificates (managed by cert-manager)
+kubectl get certificates -n caritas
+kubectl get secrets -n caritas | grep tls
 ```
 
 ---
@@ -1819,11 +2225,25 @@ If you've followed all steps, you should now have:
 
 ---
 
-**Document Version**: 1.0.0  
+**Document Version**: 2.0.0  
 **Created**: October 31, 2025  
+**Last Updated**: November 5, 2025  
 **Platform**: ORISO (Online Beratung)  
 **Kubernetes**: k3s 1.21+  
-**OS**: Ubuntu 22.04 LTS
+**OS**: Ubuntu 22.04 LTS  
+**Status**: Production Ready with HTTPS & Subdomains
+
+**Major Updates in v2.0.0:**
+- ✅ Complete HTTPS migration with Let's Encrypt SSL certificates
+- ✅ Subdomain-based architecture (app.oriso.site, api.oriso.site, etc.)
+- ✅ Automatic SSL certificate provisioning with cert-manager
+- ✅ Traefik Ingress Controller integration
+- ✅ Keycloak HTTPS/Proxy mode configuration
+- ✅ Backend services updated for HTTPS Keycloak issuer
+- ✅ Frontend environment variables for HTTPS endpoints
+- ✅ New Status Page (ORISO-Status) with professional UI
+- ✅ Matrix Synapse HTTPS configuration
+- ✅ Element UI HTTPS configuration with auto-login
 
 **This guide is complete and production-ready.**  
 **All steps have been tested and verified.**

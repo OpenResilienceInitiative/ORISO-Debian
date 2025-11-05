@@ -1,11 +1,11 @@
 {
   "default_server_config": {
     "m.homeserver": {
-      "base_url": "https://matrix.oriso.site",
-      "server_name": "matrix.oriso.site"
+      "base_url": "http://91.99.219.182:8008",
+      "server_name": "91.99.219.182"
     }
   },
-  "default_server_name": "matrix.oriso.site",
+  "default_server_name": "91.99.219.182",
   "disable_custom_homeserver": false,
   "disable_federation": true,
   "default_theme": "dark",

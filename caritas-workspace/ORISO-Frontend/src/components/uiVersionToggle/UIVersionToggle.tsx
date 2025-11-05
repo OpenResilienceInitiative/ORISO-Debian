@@ -25,10 +25,13 @@ export const UIVersionToggle = () => {
 		// Save preference
 		localStorage.setItem(UI_VERSION_STORAGE, newVersion);
 		
-		// Set cookie (30 days expiry)
+		// Set cookie with cross-subdomain support
+		const isSubdomain = window.location.hostname !== '91.99.219.182';
+		const cookieDomain = isSubdomain ? '; domain=.oriso.site' : '';
+		const secure = window.location.protocol === 'https:' ? '; secure' : '';
 		const expiryDate = new Date();
 		expiryDate.setDate(expiryDate.getDate() + 30);
-		document.cookie = `${UI_VERSION_COOKIE}=${newVersion}; path=/; expires=${expiryDate.toUTCString()}; SameSite=Lax`;
+		document.cookie = `${UI_VERSION_COOKIE}=${newVersion}; path=/; expires=${expiryDate.toUTCString()}; SameSite=Lax${cookieDomain}${secure}`;
 		
 		// Redirect to Element UI or reload
 		if (newVersion === 'new') {
@@ -37,28 +40,36 @@ export const UIVersionToggle = () => {
 			const matrixAccessToken = localStorage.getItem('matrix_access_token');
 			const matrixDeviceId = localStorage.getItem('matrix_device_id');
 			const currentHost = window.location.hostname;
-			const homeserverUrl = `http://${currentHost}:8008`;
+			// Use environment variable for homeserver URL
+			const homeserverUrl = process.env.REACT_APP_MATRIX_HOMESERVER_URL || `http://${currentHost}:8008`;
 			
-			if (matrixUserId && matrixAccessToken) {
-				// Store Matrix credentials in COOKIES (shared across ports!)
-				// Cookies are accessible from both 9001 and 8087
-				document.cookie = `matrix_sso_user_id=${encodeURIComponent(matrixUserId)}; path=/; SameSite=Lax`;
-				document.cookie = `matrix_sso_access_token=${encodeURIComponent(matrixAccessToken)}; path=/; SameSite=Lax`;
-				document.cookie = `matrix_sso_device_id=${encodeURIComponent(matrixDeviceId || '')}; path=/; SameSite=Lax`;
-				document.cookie = `matrix_sso_hs_url=${encodeURIComponent(homeserverUrl)}; path=/; SameSite=Lax`;
-				
-				console.log('✅ Matrix credentials stored in cookies for Element SSO');
-				console.log('📍 User ID:', matrixUserId);
-				console.log('📍 Homeserver:', homeserverUrl);
-				console.log('📍 Device ID:', matrixDeviceId);
-			} else {
-				console.warn('⚠️ No Matrix credentials found - Element will require manual login');
-			}
+		if (matrixUserId && matrixAccessToken) {
+			// Store Matrix credentials in COOKIES (shared across subdomains!)
+			const cookieDomain = process.env.REACT_APP_COOKIE_DOMAIN;
+			const isSecure = process.env.REACT_APP_USE_HTTPS === 'true';
 			
-			// Redirect directly to Element
-			// Element's auto-login script will read the cookies and auto-login
-			const elementPort = '8087';
-			window.location.href = `http://${currentHost}:${elementPort}`;
+			const domainStr = cookieDomain ? `; domain=${cookieDomain}` : '';
+			const secureStr = isSecure ? '; secure' : '';
+			
+			document.cookie = `matrix_sso_user_id=${encodeURIComponent(matrixUserId)}; path=/; SameSite=Lax${domainStr}${secureStr}`;
+			document.cookie = `matrix_sso_access_token=${encodeURIComponent(matrixAccessToken)}; path=/; SameSite=Lax${domainStr}${secureStr}`;
+			document.cookie = `matrix_sso_device_id=${encodeURIComponent(matrixDeviceId || '')}; path=/; SameSite=Lax${domainStr}${secureStr}`;
+			document.cookie = `matrix_sso_hs_url=${encodeURIComponent(homeserverUrl)}; path=/; SameSite=Lax${domainStr}${secureStr}`;
+			
+			console.log('✅ Matrix credentials stored in cookies for Element SSO');
+			console.log('📍 User ID:', matrixUserId);
+			console.log('📍 Homeserver:', homeserverUrl);
+			console.log('📍 Device ID:', matrixDeviceId);
+			console.log('📍 Cookie domain:', cookieDomain || 'current host only');
+		} else {
+			console.warn('⚠️ No Matrix credentials found - Element will require manual login');
+		}
+		
+		// Redirect to Element (Beta UI)
+		// Element's auto-login script will read the cookies and auto-login
+		const elementUrl = process.env.REACT_APP_ELEMENT_URL || `http://${currentHost}:8087`;
+		
+		window.location.href = elementUrl;
 		} else {
 			// Reload to Classic UI
 			window.location.reload();
