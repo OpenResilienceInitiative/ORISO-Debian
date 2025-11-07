@@ -173,12 +173,15 @@ export const SessionsList = ({
 			const wrapper = document.querySelector(
 				'.sessionsList__itemsWrapper'
 			);
+			if (!wrapper) {
+				return;
+			}
 			const firstItemId = document.querySelector('.sessionsListItem')
 				? document
 						.querySelector('.sessionsListItem')
 						.getAttribute('data-group-id')
 				: null;
-			const lastItemId = wrapper.lastElementChild.querySelector(
+			const lastItemId = wrapper.lastElementChild && wrapper.lastElementChild.querySelector(
 				'.sessionsListItem'
 			)
 				? wrapper.lastElementChild
