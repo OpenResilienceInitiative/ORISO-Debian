@@ -40,7 +40,7 @@ export const apiGetConsultantSessionList = async ({
 	if (sessionListTab === SESSION_LIST_TAB_ARCHIVE) {
 		url = url + `count=${count}&offset=${offset}`;
 	} else {
-		url = url + `count=${count}&filter=all&offset=${offset}`;
+	url = url + `count=${count}&filter=all&offset=${offset}`;
 	}
 
 	return fetchData({

@@ -269,7 +269,7 @@ public class SessionService {
 
       sessions =
           sessionRepository
-              .findByAgencyIdInAndConsultantNotAndStatusAndTeamSessionOrderByEnquiryMessageDateAsc(
+              .findByAgencyIdInAndConsultantNotAndStatusAndTeamSessionOrderByCreateDateAsc(
                   consultantAgencyIds, consultant, SessionStatus.IN_PROGRESS, true);
     }
 
@@ -301,7 +301,7 @@ public class SessionService {
 
   private List<Session> retrieveRegisteredSessions(List<Long> consultantAgencyIds) {
     return this.sessionRepository
-        .findByAgencyIdInAndConsultantIsNullAndStatusAndRegistrationTypeOrderByEnquiryMessageDateAsc(
+        .findByAgencyIdInAndConsultantIsNullAndStatusAndRegistrationTypeOrderByCreateDateAsc(
             consultantAgencyIds, SessionStatus.NEW, RegistrationType.REGISTERED);
   }
 

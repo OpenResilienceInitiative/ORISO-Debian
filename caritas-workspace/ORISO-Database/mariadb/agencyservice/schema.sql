@@ -75,6 +75,8 @@ CREATE TABLE `agency` (
   `data_protection_officer_contact` longtext DEFAULT NULL,
   `data_protection_agency_contact` longtext DEFAULT NULL,
   `agency_logo` longtext DEFAULT NULL,
+  `matrix_user_id` varchar(255) DEFAULT NULL,
+  `matrix_password` varchar(255) DEFAULT NULL,
   PRIMARY KEY (`id`),
   KEY `diocese_id` (`diocese_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb3 COLLATE=utf8mb3_unicode_ci;

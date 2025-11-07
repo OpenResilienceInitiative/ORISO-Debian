@@ -48,8 +48,8 @@
     }
 
     .call-header-left {
-        display: flex;
-        align-items: center;
+                display: flex;
+                align-items: center;
         gap: 8px;
         color: #b8b8b8;
         font-size: 14px;
@@ -57,20 +57,20 @@
 
         svg {
             opacity: 0.8;
-        }
-    }
-
+                    }
+                }
+                
     .fullscreen-toggle {
-        background: transparent;
-        border: none;
+                background: transparent;
+                border: none;
         color: #b8b8b8;
-        cursor: pointer;
+                cursor: pointer;
         padding: 4px;
         display: flex;
         align-items: center;
         transition: color 0.2s;
 
-        &:hover {
+                &:hover {
             color: #ffffff;
         }
     }
@@ -142,16 +142,16 @@
     }
 
 
-    .call-btn {
+        .call-btn {
         width: 52px;
         height: 52px;
-        padding: 0;
-        border-radius: 50%;
-        cursor: pointer;
+            padding: 0;
+            border-radius: 50%;
+            cursor: pointer;
         transition: all 0.2s ease;
-        display: flex;
-        align-items: center;
-        justify-content: center;
+            display: flex;
+            align-items: center;
+            justify-content: center;
         
         // Default: white background with slate/gray border
         background: #ffffff;
@@ -164,14 +164,14 @@
             height: 20px;
         }
 
-        &:hover {
+            &:hover {
             transform: scale(1.05);
             box-shadow: 0 2px 6px rgba(0, 0, 0, 0.15);
-        }
+            }
 
-        &:active {
+            &:active {
             transform: scale(0.95);
-        }
+            }
 
         // Video off state - lighter background
         &.video-off {
@@ -188,42 +188,42 @@
         }
 
         // Answer button (green)
-        &.answer-btn {
-            background: #10b981;
+            &.answer-btn {
+                background: #10b981;
             border-color: #10b981;
-            color: white;
+                color: white;
             width: 56px;
             height: 56px;
 
-            &:hover {
-                background: #059669;
+                &:hover {
+                    background: #059669;
                 border-color: #059669;
+                }
             }
-        }
 
         // Reject button (red)
-        &.reject-btn {
-            background: #ef4444;
+            &.reject-btn {
+                background: #ef4444;
             border-color: #ef4444;
-            color: white;
+                color: white;
             width: 56px;
             height: 56px;
 
-            &:hover {
-                background: #dc2626;
+                &:hover {
+                    background: #dc2626;
                 border-color: #dc2626;
+                }
             }
-        }
-        
+            
         // Hang up button - RED
-        &.hangup-btn {
+            &.hangup-btn {
             background: #FF3B30;
             border-color: #FF3B30;
-            color: white;
+                color: white;
             width: 56px;
             height: 56px;
 
-            &:hover {
+                &:hover {
                 background: #e6342b;
                 border-color: #e6342b;
             }

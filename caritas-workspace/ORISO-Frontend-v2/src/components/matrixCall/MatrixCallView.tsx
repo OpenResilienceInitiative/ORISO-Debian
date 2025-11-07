@@ -169,7 +169,7 @@ export const MatrixCallView: React.FC<MatrixCallViewProps> = ({
                     </svg>
                 </button>
             </div>
-
+            
             {/* Video area with avatar */}
             <div className="matrix-call__videos">
                 <div className="matrix-call__remote-video">

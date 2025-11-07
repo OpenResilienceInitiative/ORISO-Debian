@@ -22,6 +22,7 @@ import de.caritas.cob.userservice.api.model.Session;
 import de.caritas.cob.userservice.api.model.User;
 import de.caritas.cob.userservice.api.port.out.ConsultantAgencyRepository;
 import de.caritas.cob.userservice.api.service.SessionDataService;
+import de.caritas.cob.userservice.api.service.session.AgencyPreAssignmentRoomService;
 import de.caritas.cob.userservice.api.service.session.SessionService;
 import de.caritas.cob.userservice.api.service.user.UserAccountService;
 import de.caritas.cob.userservice.consultingtypeservice.generated.web.model.ExtendedConsultingTypeResponseDTO;
@@ -47,6 +48,7 @@ public class CreateSessionFacade {
   private final @NonNull UserAccountService userAccountProvider;
 
   private final @NonNull ConsultantAgencyRepository consultantAgencyRepository;
+  private final @NonNull AgencyPreAssignmentRoomService agencyPreAssignmentRoomService;
 
   /**
    * Creates a new session for the provided user.
@@ -75,6 +77,15 @@ public class CreateSessionFacade {
           user, userDTO.getMainTopicId(), agencyDTO.getId());
     }
     var session = initializeSession(userDTO, user, agencyDTO);
+
+    try {
+      agencyPreAssignmentRoomService.ensureHoldingRoom(session, user);
+    } catch (Exception ex) {
+      log.error(
+          "Failed to provision Matrix holding room for session {}: {}",
+          session != null ? session.getId() : null,
+          ex.getMessage());
+    }
 
     return session != null ? session.getId() : null;
   }

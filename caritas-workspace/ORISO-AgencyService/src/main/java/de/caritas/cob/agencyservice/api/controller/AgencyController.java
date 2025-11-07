@@ -3,6 +3,7 @@ package de.caritas.cob.agencyservice.api.controller;
 import static java.util.Optional.ofNullable;
 
 import de.caritas.cob.agencyservice.api.model.AgencyResponseDTO;
+import de.caritas.cob.agencyservice.api.model.AgencyMatrixCredentialsDTO;
 import de.caritas.cob.agencyservice.api.model.AgencyTopicsDTO;
 import de.caritas.cob.agencyservice.api.model.FullAgencyResponseDTO;
 import de.caritas.cob.agencyservice.api.service.AgencyService;
@@ -16,7 +17,9 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.util.CollectionUtils;
+import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -30,6 +33,24 @@ public class AgencyController implements AgenciesApi {
 
   private final @NonNull AgencyService agencyService;
   private final @NonNull TopicEnrichmentService topicEnrichmentService;
+
+  @GetMapping("/internal/agencies/{agencyId}/matrix-service-account")
+  public ResponseEntity<AgencyMatrixCredentialsDTO> getAgencyMatrixCredentials(
+      @PathVariable Long agencyId) {
+    return agencyService
+        .getMatrixCredentials(agencyId)
+        .map(credentials -> new ResponseEntity<>(credentials, HttpStatus.OK))
+        .orElseGet(() -> new ResponseEntity<>(HttpStatus.NOT_FOUND));
+  }
+
+  @PostMapping("/internal/agencies/{agencyId}/matrix-service-account")
+  public ResponseEntity<AgencyMatrixCredentialsDTO> provisionAgencyMatrixCredentials(
+      @PathVariable Long agencyId) {
+    return agencyService
+        .provisionMatrixCredentials(agencyId)
+        .map(credentials -> new ResponseEntity<>(credentials, HttpStatus.OK))
+        .orElseGet(() -> new ResponseEntity<>(HttpStatus.ACCEPTED));
+  }
 
   /**
    * Gets a randomly sorted list of AgencyResponseDTOs (from database) and returns the list and a

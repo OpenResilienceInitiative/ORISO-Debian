@@ -3,6 +3,7 @@ package de.caritas.cob.userservice.api.adapters.web.controller;
 import de.caritas.cob.userservice.api.adapters.matrix.MatrixSynapseService;
 import de.caritas.cob.userservice.api.helper.AuthenticatedUser;
 import de.caritas.cob.userservice.api.service.ConsultantService;
+import de.caritas.cob.userservice.api.service.agency.AgencyMatrixCredentialClient;
 import de.caritas.cob.userservice.api.service.session.SessionService;
 import de.caritas.cob.userservice.api.service.user.UserService;
 import java.util.Map;
@@ -26,6 +27,7 @@ public class MatrixMessageController {
   private final @NonNull AuthenticatedUser authenticatedUser;
   private final @NonNull ConsultantService consultantService;
   private final @NonNull UserService userService;
+  private final @NonNull AgencyMatrixCredentialClient matrixCredentialClient;
 
   /**
    * Send a message to a Matrix room.
@@ -163,16 +165,46 @@ public class MatrixMessageController {
           return ResponseEntity.ok(Map.of("messages", new Object[0]));
         }
 
-        String matrixId = consultant.get().getMatrixUserId();
-        if (matrixId != null && matrixId.startsWith("@")) {
-          matrixUsername = matrixId.substring(1).split(":")[0];
-        } else {
-          return ResponseEntity.ok(Map.of("messages", new Object[0]));
-        }
+        // For enquiries (NEW status, no consultant assigned), use agency's Matrix credentials
+        // For accepted sessions (consultant assigned), use consultant's own Matrix credentials
+        if (session.get().getConsultant() == null) {
+          // This is an enquiry - use agency's Matrix service account
+          Long agencyId = session.get().getAgencyId();
+          if (agencyId == null) {
+            log.warn("Session {} has no agency ID", sessionId);
+            return ResponseEntity.ok(Map.of("messages", new Object[0]));
+          }
 
-        password = consultant.get().getMatrixPassword();
-        if (password == null) {
-          return ResponseEntity.ok(Map.of("messages", new Object[0]));
+          var agencyCredentials = matrixCredentialClient.fetchMatrixCredentials(agencyId);
+          if (agencyCredentials.isEmpty()) {
+            log.warn("No Matrix credentials for agency {}", agencyId);
+            return ResponseEntity.ok(Map.of("messages", new Object[0]));
+          }
+
+          String agencyMatrixId = agencyCredentials.get().getMatrixUserId();
+          if (agencyMatrixId != null && agencyMatrixId.startsWith("@")) {
+            matrixUsername = agencyMatrixId.substring(1).split(":")[0];
+          } else {
+            return ResponseEntity.ok(Map.of("messages", new Object[0]));
+          }
+
+          password = agencyCredentials.get().getMatrixPassword();
+          if (password == null) {
+            return ResponseEntity.ok(Map.of("messages", new Object[0]));
+          }
+        } else {
+          // This is an accepted session - use consultant's own Matrix credentials
+          String matrixId = consultant.get().getMatrixUserId();
+          if (matrixId != null && matrixId.startsWith("@")) {
+            matrixUsername = matrixId.substring(1).split(":")[0];
+          } else {
+            return ResponseEntity.ok(Map.of("messages", new Object[0]));
+          }
+
+          password = consultant.get().getMatrixPassword();
+          if (password == null) {
+            return ResponseEntity.ok(Map.of("messages", new Object[0]));
+          }
         }
       } else {
         // USER

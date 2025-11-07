@@ -36,7 +36,8 @@ public class SecurityConfig implements WebMvcConfigurer {
 
   public static final String[] WHITE_LIST =
       new String[]{"/agencies/docs", "/agencies/docs/**", "/v2/api-docs", "/configuration/ui",
-          "/swagger-resources/**", "/configuration/security", "/swagger-ui.html", "/swagger-ui/**", "/webjars/**", "/actuator/health", "/actuator/health/**"};
+          "/swagger-resources/**", "/configuration/security", "/swagger-ui.html", "/swagger-ui/**", "/webjars/**", "/actuator/health", "/actuator/health/**",
+          "/internal/agencies", "/internal/agencies/**"};
 
   @Autowired
   AuthorisationService authorisationService;
@@ -95,6 +96,7 @@ public class SecurityConfig implements WebMvcConfigurer {
         .requestMatchers("/agencyadmin", "/agencyadmin/", "/agencyadmin/**")
         .hasAnyAuthority(AuthorityValue.AGENCY_ADMIN, AuthorityValue.RESTRICTED_AGENCY_ADMIN)
         .requestMatchers("/agencies/**").permitAll()
+        .requestMatchers("/internal/agencies/**").permitAll()
         .anyRequest().denyAll();
 
 

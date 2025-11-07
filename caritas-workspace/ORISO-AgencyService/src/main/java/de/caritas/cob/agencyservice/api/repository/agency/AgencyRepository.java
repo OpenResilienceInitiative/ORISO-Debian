@@ -3,6 +3,7 @@ package de.caritas.cob.agencyservice.api.repository.agency;
 import java.util.List;
 import java.util.Optional;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
@@ -102,4 +103,11 @@ public interface AgencyRepository extends JpaRepository<Agency, Long> {
   List<Agency> findAllByDeleteDateNotNull();
 
   Agency save(Agency agency);
+
+  @Modifying(clearAutomatically = true, flushAutomatically = true)
+  @Query("UPDATE Agency a SET a.matrixUserId = :matrixUserId, a.matrixPassword = :matrixPassword WHERE a.id = :agencyId")
+  void updateMatrixCredentials(
+      @Param("agencyId") Long agencyId,
+      @Param("matrixUserId") String matrixUserId,
+      @Param("matrixPassword") String matrixPassword);
 }

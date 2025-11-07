@@ -11,6 +11,7 @@ import de.caritas.cob.agencyservice.api.exception.httpresponses.BadRequestExcept
 import de.caritas.cob.agencyservice.api.exception.httpresponses.InternalServerErrorException;
 import de.caritas.cob.agencyservice.api.exception.httpresponses.NotFoundException;
 import de.caritas.cob.agencyservice.api.manager.consultingtype.ConsultingTypeManager;
+import de.caritas.cob.agencyservice.api.model.AgencyMatrixCredentialsDTO;
 import de.caritas.cob.agencyservice.api.model.AgencyResponseDTO;
 import de.caritas.cob.agencyservice.api.model.DemographicsDTO;
 import de.caritas.cob.agencyservice.api.model.FullAgencyResponseDTO;
@@ -21,6 +22,7 @@ import de.caritas.cob.agencyservice.api.tenant.TenantContext;
 import de.caritas.cob.agencyservice.consultingtypeservice.generated.web.model.ExtendedConsultingTypeResponseDTO;
 import de.caritas.cob.agencyservice.tenantservice.generated.web.model.RestrictedTenantDTO;
 import de.caritas.cob.agencyservice.tenantservice.generated.web.model.Settings;
+import de.caritas.cob.agencyservice.api.service.matrix.MatrixProvisioningService;
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
 import java.util.Collections;
@@ -34,6 +36,7 @@ import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.dao.DataAccessException;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 /**
  * Service for agencies.
@@ -49,6 +52,7 @@ public class AgencyService {
 
   private final @NonNull ConsultingTypeManager consultingTypeManager;
   private final @NonNull AgencyRepository agencyRepository;
+  private final @NonNull MatrixProvisioningService matrixProvisioningService;
 
   private final @NonNull TenantService tenantService;
   private final @NonNull DemographicsConverter demographicsConverter;
@@ -154,6 +158,67 @@ public class AgencyService {
 
   public List<Integer> getAgenciesTopics() {
     return agencyRepository.findAllAgenciesTopics(TenantContext.getCurrentTenant());
+  }
+
+  @Transactional
+  public Optional<AgencyMatrixCredentialsDTO> provisionMatrixCredentials(Long agencyId) {
+    var agency = agencyRepository.findById(agencyId).orElseThrow(NotFoundException::new);
+    return provisionMatrixCredentials(agency);
+  }
+
+  @Transactional
+  public Optional<AgencyMatrixCredentialsDTO> provisionMatrixCredentials(Agency agency) {
+    return provisionMatrixCredentials(agency, true);
+  }
+
+  private Optional<AgencyMatrixCredentialsDTO> provisionMatrixCredentials(Agency agency, boolean saveEntity) {
+    log.info("Attempting to provision Matrix credentials for agency {} (id={})", agency.getName(), agency.getId());
+    
+    if (nonNull(agency.getMatrixUserId()) && nonNull(agency.getMatrixPassword())) {
+      log.info("Agency {} already has Matrix credentials: {}", agency.getName(), agency.getMatrixUserId());
+      return Optional.of(new AgencyMatrixCredentialsDTO(agency.getMatrixUserId(), agency.getMatrixPassword()));
+    }
+
+    log.info("No existing Matrix credentials found. Provisioning new account for agency {}", agency.getName());
+    
+    try {
+      var optionalCredentials =
+          matrixProvisioningService.ensureAgencyAccount(
+              "agency-" + agency.getId(), agency.getName());
+
+      if (optionalCredentials.isEmpty()) {
+        log.warn("Matrix provisioning returned empty result for agency {} (id={})", agency.getName(), agency.getId());
+        return Optional.empty();
+      }
+
+      var creds = optionalCredentials.get();
+      agency.setMatrixUserId(creds.getUserId());
+      agency.setMatrixPassword(creds.getPassword());
+      if (saveEntity) {
+        agencyRepository.updateMatrixCredentials(
+            agency.getId(), creds.getUserId(), creds.getPassword());
+        log.info("Successfully provisioned and saved Matrix credentials for agency {} (id={}): {}", 
+                 agency.getName(), agency.getId(), creds.getUserId());
+      }
+
+      return Optional.of(new AgencyMatrixCredentialsDTO(creds.getUserId(), creds.getPassword()));
+    } catch (Exception ex) {
+      log.warn(
+          "Matrix provisioning failed for agency {} (id={}): {}",
+          agency.getName(),
+          agency.getId(),
+          ex.getMessage(), ex);
+      return Optional.empty();
+    }
+  }
+
+  public Optional<AgencyMatrixCredentialsDTO> getMatrixCredentials(Long agencyId) {
+    return agencyRepository
+        .findById(agencyId)
+        .map(
+            agency ->
+                new AgencyMatrixCredentialsDTO(
+                    agency.getMatrixUserId(), agency.getMatrixPassword()));
   }
 
   private Optional<Integer> getConsultingTypeIdForSearch(int consultingTypeId) {

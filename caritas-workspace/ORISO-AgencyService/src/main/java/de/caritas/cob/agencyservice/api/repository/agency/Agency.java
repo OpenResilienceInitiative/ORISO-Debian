@@ -156,6 +156,12 @@ public class Agency implements TenantAware {
   @Column(name = "agency_logo")
   private String agencyLogo;
 
+  @Column(name = "matrix_user_id")
+  private String matrixUserId;
+
+  @Column(name = "matrix_password")
+  private String matrixPassword;
+
   @Transient
   public boolean hasAnyDemographicsAttributes() {
     return getAgeTo() != null || getAgeFrom() != null || getGenders() != null;

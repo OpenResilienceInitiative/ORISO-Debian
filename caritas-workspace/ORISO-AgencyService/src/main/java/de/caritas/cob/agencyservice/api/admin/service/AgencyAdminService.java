@@ -23,6 +23,7 @@ import de.caritas.cob.agencyservice.api.repository.agency.AgencyRepository;
 import de.caritas.cob.agencyservice.api.repository.agency.AgencyTenantUnawareRepository;
 import de.caritas.cob.agencyservice.api.repository.agencytopic.AgencyTopic;
 import de.caritas.cob.agencyservice.api.service.AppointmentService;
+import de.caritas.cob.agencyservice.api.service.AgencyService;
 import de.caritas.cob.agencyservice.api.tenant.TenantContext;
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
@@ -53,6 +54,7 @@ public class AgencyAdminService {
   private final @NonNull DeleteAgencyValidator deleteAgencyValidator;
   private final @NonNull AgencyTopicMergeService agencyTopicMergeService;
   private final @NonNull AppointmentService appointmentService;
+  private final @NonNull AgencyService agencyService;
   private final @NonNull AuthenticatedUser authenticatedUser;
   private final @NonNull DataProtectionConverter dataProtectionConverter;
 
@@ -110,6 +112,7 @@ public class AgencyAdminService {
     setTenantIdOnCreate(agencyDTO, agency);
 
     var savedAgency = agencyRepository.save(agency);
+    agencyService.provisionMatrixCredentials(savedAgency);
     enrichWithAgencyTopicsIfTopicFeatureEnabled(savedAgency);
     this.appointmentService.syncAgencyDataToAppointmentService(savedAgency);
     return new AgencyAdminFullResponseDTOBuilder(savedAgency)
@@ -233,7 +236,9 @@ public class AgencyAdminService {
         .updateDate(LocalDateTime.now(ZoneOffset.UTC))
         .counsellingRelations(agency.getCounsellingRelations())
         .deleteDate(agency.getDeleteDate())
-        .agencyLogo(updateAgencyDTO.getAgencyLogo());
+        .agencyLogo(updateAgencyDTO.getAgencyLogo())
+        .matrixUserId(agency.getMatrixUserId())
+        .matrixPassword(agency.getMatrixPassword());
 
     dataProtectionConverter.convertToEntity(updateAgencyDTO.getDataProtection(), agencyBuilder);
 
