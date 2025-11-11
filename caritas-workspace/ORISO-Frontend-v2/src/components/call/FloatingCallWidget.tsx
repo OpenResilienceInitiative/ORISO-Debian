@@ -331,14 +331,14 @@ export const FloatingCallWidget: React.FC = () => {
                             </svg>
                         </button> */}
 
-                        {/* More options */}
-                        <button className="call-btn" title="More options">
+                        {/* More options - Hidden */}
+                        {/* <button className="call-btn" title="More options">
                             <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
                                 <circle cx="6" cy="12" r="2"/>
                                 <circle cx="12" cy="12" r="2"/>
                                 <circle cx="18" cy="12" r="2"/>
                             </svg>
-                        </button>
+                        </button> */}
 
                         {/* Hang up */}
                         <button className="call-btn hangup-btn" onClick={handleHangup} title="End call">
