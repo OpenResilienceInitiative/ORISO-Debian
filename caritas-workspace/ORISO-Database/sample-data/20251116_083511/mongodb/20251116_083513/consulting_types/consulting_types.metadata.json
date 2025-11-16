@@ -1,0 +1,1 @@
+{"indexes":[{"v":{"$numberInt":"2"},"key":{"_id":{"$numberInt":"1"}},"name":"_id_"}],"uuid":"82ae3b8b33274d74be443c7cc28e2934","collectionName":"consulting_types","type":"collection"}
