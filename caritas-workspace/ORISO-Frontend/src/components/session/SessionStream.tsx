@@ -401,6 +401,35 @@ export const SessionStream = ({
 					const timestamp = event.getTs();
 					const eventId = event.getId();
 					
+					// Handle file attachments (m.file, m.image, m.video, m.audio)
+					let attachments = undefined;
+					let fileObj = undefined;
+					if (content.msgtype && content.msgtype !== 'm.text' && content.url) {
+						// Convert mxc:// URL to download path
+						let downloadPath = content.url;
+						if (downloadPath.startsWith('mxc://')) {
+							const mxcParts = downloadPath.substring(6).split('/');
+							const serverName = mxcParts[0];
+							const mediaId = mxcParts[1];
+							downloadPath = `/_matrix/media/r0/download/${serverName}/${mediaId}`;
+						}
+						
+						fileObj = {
+							name: content.body || 'file',
+							type: content.info?.mimetype || 'application/octet-stream'
+						};
+						
+						attachments = [{
+							type: content.msgtype === 'm.image' ? 'image' : 'file',
+							title: content.body || 'file',
+							title_link: downloadPath,
+							title_link_download: true,
+							image_url: content.msgtype === 'm.image' ? downloadPath : undefined,
+							image_type: content.info?.mimetype || 'application/octet-stream',
+							image_size: content.info?.size || 0
+						}];
+					}
+					
 					// Create a message object in the same format as backend messages
 					const newMessage = {
 						_id: eventId,
@@ -413,7 +442,9 @@ export const SessionStream = ({
 							name: sender.split(':')[0].substring(1)
 						},
 						_updatedAt: new Date(timestamp).toISOString(),
-						t: content.msgtype === 'm.text' ? undefined : content.msgtype
+						t: content.msgtype === 'm.text' ? undefined : content.msgtype,
+						file: fileObj,
+						attachments: attachments
 					};
 					
 					console.log('📬 New message object:', newMessage);

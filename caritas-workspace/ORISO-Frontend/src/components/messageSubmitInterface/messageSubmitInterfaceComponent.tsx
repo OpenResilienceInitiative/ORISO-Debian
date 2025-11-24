@@ -1010,7 +1010,7 @@ export const MessageSubmitInterfaceComponent = ({
 								<PluginsEditor
 									editorState={editorState}
 									onChange={handleEditorChange}
-									readOnly={!draftLoaded}
+									readOnly={!draftLoaded || !!attachmentSelected || !!uploadProgress}
 									handleKeyCommand={handleEditorKeyCommand}
 									placeholder={placeholder}
 									stripPastedStyles={true}

@@ -177,14 +177,15 @@ export const GroupChatHeader = ({
 						</div>
 					)}
 
-				<SessionMenu
+				{/* MATRIX MIGRATION: Temporarily hide session menu for group chats */}
+				{false && <SessionMenu
 					hasUserInitiatedStopOrLeaveRequest={
 						hasUserInitiatedStopOrLeaveRequest
 					}
 					isAskerInfoAvailable={isAskerInfoAvailable()}
 					isJoinGroupChatView={isJoinGroupChatView}
 					bannedUsers={bannedUsers}
-				/>
+				/>}
 		</div>
 		<div className="sessionInfo__metaInfo">
 			{activeSession.item.active &&

@@ -440,7 +440,8 @@ export const MessageItemComponent = ({
 								username={username}
 								displayName={displayName}
 							/>
-							<MessageFlyoutMenu
+							{/* MATRIX MIGRATION: Temporarily hide message menu */}
+							{false && <MessageFlyoutMenu
 								_id={_id}
 								userId={userId}
 								username={username}
@@ -450,7 +451,7 @@ export const MessageItemComponent = ({
 									activeSession.item.status ===
 									STATUS_ARCHIVED
 								}
-							/>
+							/>}
 						</div>
 
 					<div
