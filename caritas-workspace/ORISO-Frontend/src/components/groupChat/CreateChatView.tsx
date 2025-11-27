@@ -31,6 +31,7 @@ export const CreateGroupChatView = () => {
 	const { t: translate } = useTranslation();
 	const history = useHistory();
 	const {
+		userData,
 		userData: { agencies = [] }
 	} = useContext(UserDataContext);
 
@@ -106,7 +107,22 @@ export const CreateGroupChatView = () => {
 		if (selectedAgency) {
 			apiGetAgencyConsultantList(selectedAgency.toString())
 				.then((consultants) => {
-					setAvailableConsultants(consultants);
+					// ✅ FIX 1: Filter out current user from consultant list
+					// ✅ FIX 2: Remove duplicates using consultantId as unique key
+					const currentUserId = userData?.userId;
+					const uniqueConsultants = consultants.reduce((acc, consultant) => {
+						// Skip if this is the current user
+						if (consultant.consultantId === currentUserId) {
+							return acc;
+						}
+						// Skip if we already have this consultant (remove duplicates)
+						if (acc.some(c => c.consultantId === consultant.consultantId)) {
+							return acc;
+						}
+						return [...acc, consultant];
+					}, [] as Consultant[]);
+					
+					setAvailableConsultants(uniqueConsultants);
 				})
 				.catch((error) => {
 					console.error('Failed to fetch consultants:', error);
@@ -116,7 +132,7 @@ export const CreateGroupChatView = () => {
 			setAvailableConsultants([]);
 			setSelectedConsultants([]);
 		}
-	}, [selectedAgency]);
+	}, [selectedAgency, userData]);
 
 	// Validate form
 	useEffect(() => {
@@ -210,7 +226,7 @@ export const CreateGroupChatView = () => {
 				value: consultant.consultantId,
 				label: `${consultant.firstName} ${consultant.lastName}`
 			})),
-			defaultValue: getSelectedConsultantOptions(),
+			defaultValue: getSelectedConsultantOptions(), // ✅ Show selected values inside
 			handleDropdownSelect: handleConsultantsSelect,
 			selectInputLabel: translate('groupChat.create.consultantsSelect.label') || 'Select Consultants',
 			isSearchable: true,

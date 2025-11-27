@@ -74,10 +74,12 @@ const colourStyles = (
 		multiValueLabel,
 		multiValueRemove,
 		indicatorSeparator,
+		valueContainer,
 		...overrides
 	}: defaultStyles
 ) => ({
 	control: (styles, state) => {
+		const isMulti = state.selectProps.isMulti;
 		return {
 			...styles,
 			'backgroundColor': 'white',
@@ -85,7 +87,11 @@ const colourStyles = (
 				? '2px solid #3F373F'
 				: '1px solid #8C878C',
 			'borderRadius': undefined,
-			'height': '50px',
+			// ✅ FIXED BIG BOX for multi-select (like textarea)
+			'minHeight': isMulti ? '200px' : '50px',
+			'height': isMulti ? '200px' : '50px', // FIXED 200px height (not flexible!)
+			'maxHeight': isMulti ? '200px' : '50px',
+			'overflowY': 'visible',
 			'outline': '0',
 			'padding': state.isFocused ? '0 11px' : '0 12px',
 			'color': '#3F373F',
@@ -115,7 +121,8 @@ const colourStyles = (
 		...(singleValue?.(styles, state) ?? {})
 	}),
 	input: (styles, state) => {
-		return state.isMulti
+		const isMulti = state.selectProps.isMulti;
+		return isMulti
 			? {
 					...styles,
 					...(input?.(styles, state) ?? {})
@@ -126,6 +133,20 @@ const colourStyles = (
 					cursor: 'pointer',
 					...(input?.(styles, state) ?? {})
 				};
+	},
+	valueContainer: (styles, state) => {
+		const isMulti = state.selectProps.isMulti;
+		return {
+			...styles,
+			// ✅ FIXED BIG BOX - valueContainer fills the 200px control
+			flexWrap: isMulti ? 'wrap' : 'nowrap',
+			height: isMulti ? '170px' : 'auto', // Fixed height to fill control
+			maxHeight: isMulti ? '170px' : 'none',
+			overflowY: isMulti ? 'auto' : 'visible',
+			padding: isMulti ? '24px 8px 8px 8px' : '8px', // ✅ Extra top padding for label
+			alignContent: 'flex-start', // Align pills to top
+			...(valueContainer?.(styles, state) ?? {})
+		};
 	},
 	option: (styles, state) => {
 		return {

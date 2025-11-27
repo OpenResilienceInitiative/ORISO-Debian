@@ -272,7 +272,7 @@ export const GroupChatHeader = ({
 					bannedUsers={bannedUsers}
 				/>}
 		</div>
-		<div className="sessionInfo__metaInfo">
+		{/* <div className="sessionInfo__metaInfo">
 			{activeSession.item.active &&
 				activeSession.item.subscribed &&
 				!isJoinGroupChatView && (
@@ -395,7 +395,7 @@ export const GroupChatHeader = ({
 							)}
 						</div>
 					)}
-			</div>
+			</div> */}
 		</div>
 	);
 };
