@@ -1,26 +1,25 @@
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: consultingtypeservice-config
+  name: uploadservice-config
   namespace: caritas
 data:
   # Database Configuration - Use service names (same namespace)
-  SPRING_DATASOURCE_URL: "jdbc:mariadb://mariadb:3306/consultingtypeservice"
+  SPRING_DATASOURCE_URL: "jdbc:mariadb://mariadb:3306/uploadservice"
   
   # Keycloak Configuration - Use service names
   KEYCLOAK_AUTH_SERVER_URL: "http://keycloak:8080"
   KEYCLOAK_REALM: "online-beratung"
   SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_ISSUER_URI: "http://keycloak:8080/realms/online-beratung"
   
-  # MongoDB Configuration - Use service names
-  SPRING_DATA_MONGODB_URI: "mongodb://mongodb:27017/consulting_types?retryWrites=false"
+  # Matrix Configuration - Use service names
+  MATRIX_API_URL: "http://matrix-synapse:8008"
+  MATRIX_SERVER_NAME: "caritas.local"
   
   # Service URLs - Use service names
+  USER_SERVICE_API_URL: "http://userservice:8082/users"
   TENANT_SERVICE_API_URL: "http://tenantservice:8081"
   
-  # App Base URL
-  APP_BASE_URL: "http://localhost:8083"
-  
-  # Liquibase - Explicitly disabled (database schemas managed separately in ORISO-Database)
-  SPRING_LIQUIBASE_ENABLED: "false"
+  # MongoDB Configuration - Use service names
+  MONGODB_URI: "mongodb://mongodb:27017/rocketchat?retryWrites=false"
 
