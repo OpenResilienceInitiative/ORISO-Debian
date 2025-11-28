@@ -189,9 +189,10 @@ ORISO-Database/
     │   ├── backup-all.sh        # Backup everything
     │   ├── backup-mariadb.sh
     │   └── backup-mongodb.sh
-    └── restore/                 # Restore utilities
-        ├── restore-mariadb.sh
-        └── restore-mongodb.sh
+    ├── restore/                 # Restore utilities
+    │   ├── restore-mariadb.sh
+    │   └── restore-mongodb.sh
+    └── export-schemas.sh        # Export current schemas from running cluster
 ```
 
 ## Schema Management Philosophy
@@ -219,19 +220,39 @@ This means:
 
 ## Exporting Schemas
 
-### MariaDB Schema Export
+### Automated Export (Recommended)
+Use the export script to export all schemas from the running production database:
+
+```bash
+./scripts/export-schemas.sh
+```
+
+This script will:
+- Export all MariaDB schemas (7 databases)
+- Export MongoDB collections
+- Export PostgreSQL schema (Matrix)
+- Update main schema files in the repository
+- Create timestamped backups in `exported/` directories
+
+### Manual Export
+
+#### MariaDB Schema Export
 ```bash
 # Export all schemas
 for db in agencyservice consultingtypeservice tenantservice userservice videoservice uploadservice caritas; do
-  kubectl exec -n caritas mariadb-0 -- mysqldump -u root -proot --no-data --skip-add-drop-table $db > mariadb/$db/schema.sql
+  kubectl exec -n caritas mariadb-0 -- mysqldump -u root -proot --no-data --skip-triggers --skip-routines --skip-events --single-transaction $db > mariadb/$db/schema.sql
 done
 ```
 
-### MongoDB Schema Export
+#### MongoDB Schema Export
 ```bash
 POD=$(kubectl get pods -n caritas -l app=mongodb -o jsonpath="{.items[0].metadata.name}")
-kubectl exec -n caritas $POD -- mongodump --db=consulting_types --out=/tmp/backup
-kubectl cp caritas/$POD:/tmp/backup ./mongodb/
+kubectl exec -n caritas $POD -- mongodump --db=consulting_types --archive > mongodb/exported/consulting_types.archive
+```
+
+#### PostgreSQL Schema Export
+```bash
+kubectl exec -n caritas matrix-postgres-0 -- pg_dump -U synapse -d synapse --schema-only --no-owner --no-acl > postgresql/matrix/schema.sql
 ```
 
 ## Verification

@@ -2,11 +2,28 @@
 
 **The Ultimate Step-by-Step Guide for AI Agents & Developers**
 
-**Version**: 2.0.0  
-**Last Updated**: November 5, 2025  
+**Version**: 3.0.0  
+**Last Updated**: November 28, 2025  
 **Platform**: ORISO (Online Beratung)  
 **Target**: Fresh Ubuntu Server (20.04/22.04)  
-**Status**: Production Ready with HTTPS & Subdomains
+**Status**: Production Ready with ConfigMaps/Secrets & DNS-Based Service Discovery
+
+---
+
+## 🎯 What's New in v3.0.0
+
+**Major Configuration Refactoring - Production Ready:**
+
+- ✅ **ConfigMaps & Secrets**: All services now use Kubernetes ConfigMaps/Secrets - no hardcoded values
+- ✅ **DNS-Based Discovery**: Services use Kubernetes DNS names (e.g., `mariadb.caritas.svc.cluster.local`) instead of IPs
+- ✅ **Configuration Validators**: Services validate required configs on startup with clear error messages
+- ✅ **ORISO-Database Updated**: Latest production schemas exported and organized with automated export script
+- ✅ **Update Without Rebuild**: Configuration can be updated via ConfigMaps/Secrets without rebuilding images
+- ✅ **Fail-Fast Validation**: Services fail immediately with helpful errors if configuration is missing
+
+**⚠️ IMPORTANT**: Section 9.5 (ConfigMaps/Secrets) is **REQUIRED** before deploying backend services. Services will fail to start without proper configuration.
+
+**See**: `PRODUCTION_GUIDE.md` and `CHANGES_SUMMARY.md` for detailed information about the configuration refactoring.
 
 ---
 
@@ -21,6 +38,7 @@
 7. [Deploy Infrastructure](#7-deploy-infrastructure)
 8. [Configure Keycloak](#8-configure-keycloak)
 9. [Setup Databases](#9-setup-databases)
+9.5. [Configure ConfigMaps and Secrets](#95-configure-configmaps-and-secrets) ⭐ **NEW - Required**
 10. [Deploy Backend Services](#10-deploy-backend-services)
 11. [Deploy Frontend](#11-deploy-frontend)
 12. [Deploy Matrix Communication](#12-deploy-matrix-communication)
@@ -35,19 +53,31 @@
 
 ---
 
-## ⚠️ Deployment Order for HTTPS Setup
+## ⚠️ Deployment Order for Production Setup
 
-**For HTTPS/Production deployment, follow this order:**
+**For Production deployment, follow this order:**
 
-1. **Complete sections 1-14** (deploy all services on HTTP/ports)
-2. **Section 16.1**: Configure DNS A records for all subdomains
-3. **Section 16.2**: Install cert-manager
-4. **Section 16.3**: Configure Ingress with TLS annotations
-5. **Section 16.4**: Deploy Ingress resources for each service
-6. **Section 8.1-8.3**: Update Keycloak and backend services for HTTPS
-7. **Section 11.1**: Update frontend environment variables for HTTPS
-8. **Section 16.5**: Verify SSL certificates are issued
-9. **Section 17**: Test all HTTPS endpoints
+1. **Complete sections 1-8** (server setup, Kubernetes, infrastructure, Keycloak)
+2. **Section 9**: Setup databases with latest schemas from ORISO-Database
+3. **Section 9.5**: ⭐ **REQUIRED** - Apply ConfigMaps and Secrets (services will fail without this)
+4. **Section 10**: Deploy backend services (they will use ConfigMaps/Secrets)
+5. **Complete sections 11-14** (frontend, Matrix, Nginx, monitoring)
+6. **Section 15**: Post-deployment verification
+7. **Section 16**: DNS & SSL setup (if using HTTPS)
+8. **Section 17**: Final testing
+
+**For HTTPS/Production deployment, additionally follow:**
+
+1. **Section 16.1**: Configure DNS A records for all subdomains
+2. **Section 16.2**: Install cert-manager
+3. **Section 16.3**: Configure Ingress with TLS annotations
+4. **Section 16.4**: Deploy Ingress resources for each service
+5. **Section 8.1-8.3**: Update Keycloak and backend services for HTTPS
+6. **Section 11.1**: Update frontend environment variables for HTTPS
+7. **Section 16.5**: Verify SSL certificates are issued
+8. **Section 17**: Test all HTTPS endpoints
+
+**⚠️ CRITICAL**: Section 9.5 (ConfigMaps/Secrets) is **REQUIRED** before deploying backend services. Services will fail to start if configuration is missing.
 
 **Note**: Services remain accessible via HTTP ports during HTTPS migration. HTTPS becomes primary access method once certificates are issued.
 
@@ -830,6 +860,8 @@ kubectl get pods -n caritas | grep -E "mariadb|mongodb"
 
 ### 9.2 Setup MariaDB Databases
 
+**⚠️ IMPORTANT**: ORISO-Database repository contains the latest production schemas exported from the running system.
+
 ```bash
 cd ~/online-beratung/caritas-workspace/ORISO-Database
 
@@ -842,28 +874,30 @@ cd ~/online-beratung/caritas-workspace/ORISO-Database
 MARIADB_POD=$(kubectl get pods -n caritas -l app=mariadb -o jsonpath="{.items[0].metadata.name}")
 
 # Create databases
-kubectl exec -it -n caritas $MARIADB_POD -- mysql -u root -pPassword1234! <<EOF
+kubectl exec -it -n caritas $MARIADB_POD -- mysql -u root -proot <<EOF
 CREATE DATABASE IF NOT EXISTS agencyservice CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 CREATE DATABASE IF NOT EXISTS userservice CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 CREATE DATABASE IF NOT EXISTS uploadservice CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 CREATE DATABASE IF NOT EXISTS tenantservice CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
-CREATE DATABASE IF NOT EXISTS statisticsservice CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
-CREATE DATABASE IF NOT EXISTS keycloak CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
-CREATE DATABASE IF NOT EXISTS caritas_master CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+CREATE DATABASE IF NOT EXISTS consultingtypeservice CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+CREATE DATABASE IF NOT EXISTS videoservice CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+CREATE DATABASE IF NOT EXISTS caritas CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 SHOW DATABASES;
 EOF
 
-# Import schemas
-for db in agencyservice userservice uploadservice tenantservice; do
+# Import schemas from ORISO-Database (latest production schemas)
+for db in agencyservice userservice uploadservice tenantservice consultingtypeservice videoservice caritas; do
   echo "Importing schema for $db..."
   kubectl exec -i -n caritas $MARIADB_POD -- \
-    mysql -u root -pPassword1234! $db < mariadb/${db}/${db}-schema.sql
+    mysql -u root -proot $db < mariadb/${db}/schema.sql
 done
 
 # Verify
 kubectl exec -it -n caritas $MARIADB_POD -- \
-  mysql -u root -pPassword1234! -e "SHOW DATABASES;"
+  mysql -u root -proot -e "SHOW DATABASES;"
 ```
+
+**Note**: All schemas in `ORISO-Database/mariadb/{database}/schema.sql` are exported from the current production system and are production-ready.
 
 ### 9.3 Setup MongoDB
 
@@ -871,28 +905,179 @@ kubectl exec -it -n caritas $MARIADB_POD -- \
 # Get MongoDB pod
 MONGODB_POD=$(kubectl get pods -n caritas -l app=mongodb -o jsonpath="{.items[0].metadata.name}")
 
-# Create database and import data
+# Create database and collections
 kubectl exec -it -n caritas $MONGODB_POD -- mongosh <<EOF
 use consulting_types
-db.createCollection("consultingTypes")
+db.createCollection("consulting_types")
+db.createCollection("application_settings")
 exit
 EOF
-
-# Import consulting types (if you have data)
-# kubectl cp mongodb/consulting_types/consulting-types-export.json caritas/$MONGODB_POD:/tmp/
-# kubectl exec -it -n caritas $MONGODB_POD -- \
-#   mongosh consulting_types --eval 'db.consultingTypes.insertMany([...data...])'
 
 # Verify
 kubectl exec -it -n caritas $MONGODB_POD -- \
   mongosh --eval "show dbs"
+kubectl exec -it -n caritas $MONGODB_POD -- \
+  mongosh consulting_types --eval "db.getCollectionNames()"
 ```
+
+**Note**: MongoDB collections are created automatically by the application. The schema structure is documented in `ORISO-Database/mongodb/README.md`.
+
+### 9.4 Export/Update Database Schemas (Optional)
+
+If you need to export the latest schemas from a running system:
+
+```bash
+cd ~/online-beratung/caritas-workspace/ORISO-Database
+
+# Export all schemas from running production cluster
+./scripts/export-schemas.sh
+
+# This will:
+# - Export all MariaDB schemas (7 databases)
+# - Export MongoDB collections
+# - Export PostgreSQL schema (Matrix)
+# - Update main schema files in the repository
+# - Create timestamped backups in exported/ directories
+```
+
+---
+
+## 9.5. Configure ConfigMaps and Secrets ⭐ **REQUIRED**
+
+**⚠️ CRITICAL**: All backend services now require ConfigMaps and Secrets. Services will **fail to start** if configuration is missing.
+
+### 9.5.1 Understanding Configuration Management
+
+**Key Principles:**
+- ✅ **No Hardcoded Values**: All services use environment variables from ConfigMaps/Secrets
+- ✅ **DNS Names**: Services use Kubernetes DNS names (e.g., `mariadb.caritas.svc.cluster.local:3306`) instead of IPs
+- ✅ **Configuration Validation**: Services validate required configs on startup and fail with clear error messages
+- ✅ **Update Without Rebuild**: Configuration can be updated via ConfigMaps/Secrets without rebuilding images
+
+### 9.5.2 Apply ConfigMaps and Secrets
+
+```bash
+cd ~/online-beratung/caritas-workspace/ORISO-Kubernetes
+
+# Option A: Apply all ConfigMaps and Secrets at once (recommended)
+./scripts/apply-configmaps-secrets.sh
+
+# Option B: Apply manually
+kubectl apply -f configmaps/services/
+kubectl apply -f secrets/services/
+```
+
+**ConfigMaps Location**: `ORISO-Kubernetes/configmaps/services/`
+- `userservice-config.yaml`
+- `tenantservice-config.yaml`
+- `agencyservice-config.yaml`
+- `consultingtypeservice-config.yaml`
+
+**Secrets Location**: `ORISO-Kubernetes/secrets/services/`
+- `userservice-secrets.yaml`
+- `tenantservice-secrets.yaml`
+- `agencyservice-secrets.yaml`
+- `consultingtypeservice-secrets.yaml`
+
+### 9.5.3 Verify ConfigMaps and Secrets
+
+```bash
+# Check ConfigMaps
+kubectl get configmaps -n caritas | grep -E "userservice|tenantservice|agencyservice|consultingtypeservice"
+
+# Check Secrets
+kubectl get secrets -n caritas | grep -E "userservice|tenantservice|agencyservice|consultingtypeservice"
+
+# View a ConfigMap (non-sensitive)
+kubectl get configmap userservice-config -n caritas -o yaml
+
+# View a Secret (sensitive - be careful)
+kubectl get secret userservice-secrets -n caritas -o yaml
+```
+
+### 9.5.4 Update Deployment Files to Use ConfigMaps/Secrets
+
+**All deployment files must reference ConfigMaps and Secrets:**
+
+```yaml
+# Example from deployment file
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: userservice
+  namespace: caritas
+spec:
+  template:
+    spec:
+      containers:
+      - name: userservice
+        envFrom:
+        - configMapRef:
+            name: userservice-config
+        - secretRef:
+            name: userservice-secrets
+```
+
+**See example**: `ORISO-Kubernetes/deployments/EXAMPLE-userservice-deployment-with-configmap.yaml`
+
+### 9.5.5 Configuration Validators
+
+All services have `ConfigurationValidator.java` that:
+- ✅ Validates required environment variables on startup
+- ✅ Throws clear error messages if configs are missing
+- ✅ Guides you to fix missing ConfigMaps/Secrets
+
+**Example Error (if config is missing):**
+```
+CRITICAL: Missing required configuration values. Please provide the following via ConfigMap/Secrets:
+  - config 'spring.datasource.url (SPRING_DATASOURCE_URL)' is missing
+  - config 'keycloak.auth-server-url (KEYCLOAK_AUTH_SERVER_URL)' is missing
+
+IMPORTANT: Use Kubernetes DNS names (e.g., mariadb.caritas.svc.cluster.local:3306) NOT hardcoded IPs.
+```
+
+**If you see this error:**
+1. Check ConfigMaps/Secrets are applied: `kubectl get configmaps,secrets -n caritas`
+2. Verify deployment references ConfigMaps/Secrets: `kubectl get deployment <service> -n caritas -o yaml | grep -A 10 envFrom`
+3. Check service logs: `kubectl logs deployment/<service> -n caritas`
+
+### 9.5.6 Customize Configuration
+
+**To update configuration values:**
+
+```bash
+# Edit ConfigMap (non-sensitive values)
+kubectl edit configmap userservice-config -n caritas
+
+# Edit Secret (sensitive values - be careful)
+kubectl edit secret userservice-secrets -n caritas
+
+# Or update the YAML files and reapply
+kubectl apply -f configmaps/services/userservice-config.yaml
+kubectl apply -f secrets/services/userservice-secrets.yaml
+
+# Restart service to apply changes
+kubectl rollout restart deployment/userservice -n caritas
+```
+
+**Important Notes:**
+- ConfigMaps use **Kubernetes DNS names** (e.g., `mariadb.caritas.svc.cluster.local:3306`)
+- Never use hardcoded IPs (e.g., `10.43.123.72:3306`) - IPs can change when pods are rescheduled
+- All passwords/tokens go in Secrets, not ConfigMaps
+- Update ConfigMaps/Secrets, then restart services - no need to rebuild images
 
 ---
 
 ## 10. Deploy Backend Services
 
-### 10.1 Deploy All Backend Services
+### 10.1 Prerequisites
+
+**⚠️ CRITICAL**: Before deploying backend services, ensure:
+- ✅ ConfigMaps and Secrets are applied (Section 9.5)
+- ✅ Databases are set up with schemas (Section 9.2-9.3)
+- ✅ Deployment files reference ConfigMaps/Secrets (see example in Section 9.5.4)
+
+### 10.2 Deploy All Backend Services
 
 ```bash
 cd ~/online-beratung/caritas-workspace/ORISO-Kubernetes
@@ -915,7 +1100,7 @@ kubectl get pods -n caritas | grep -E "tenant|user|consulting|agency|upload|vide
 # videoservice-xxx             1/1     Running
 ```
 
-### 10.2 Verify Backend Services Health
+### 10.3 Verify Backend Services Health
 
 ```bash
 # Check TenantService
@@ -933,11 +1118,40 @@ curl http://127.0.0.1:8083/actuator/health
 # Check AgencyService
 curl http://127.0.0.1:8084/actuator/health
 # Expected: {"status":"UP"}
+```
 
-# If any service shows DOWN, check logs:
+### 10.4 Troubleshoot Service Startup Issues
+
+**If a service fails to start, check for configuration errors:**
+
+```bash
+# Check service logs
 kubectl logs deployment/tenantservice -n caritas --tail=100
 kubectl logs deployment/userservice -n caritas --tail=100
+
+# Look for ConfigurationValidator errors:
+# "CRITICAL: Missing required configuration values..."
+
+# Common issues:
+# 1. ConfigMaps/Secrets not applied
+kubectl get configmaps,secrets -n caritas | grep <service-name>
+
+# 2. Deployment doesn't reference ConfigMaps/Secrets
+kubectl get deployment <service-name> -n caritas -o yaml | grep -A 10 envFrom
+
+# 3. Wrong DNS names in ConfigMaps
+kubectl get configmap <service-name>-config -n caritas -o yaml | grep -i "mariadb\|keycloak"
+
+# Fix: Update ConfigMap/Secret and restart service
+kubectl apply -f configmaps/services/<service-name>-config.yaml
+kubectl rollout restart deployment/<service-name> -n caritas
 ```
+
+**Configuration Validator Errors:**
+- Services validate required configs on startup
+- If config is missing, service will fail with clear error message
+- Error message tells you exactly which config is missing
+- Fix by applying/updating ConfigMaps/Secrets, then restart service
 
 ---
 
@@ -1985,19 +2199,54 @@ kubectl logs -n kube-system -l app.kubernetes.io/name=traefik --tail=100
 
 ### 20.6 Backend Service Issues
 
+#### Service Fails to Start (Configuration Errors)
+```bash
+# Check service logs for ConfigurationValidator errors
+kubectl logs deployment/<service-name> -n caritas --tail=100
+
+# Look for:
+# "CRITICAL: Missing required configuration values..."
+
+# Common causes:
+# 1. ConfigMaps/Secrets not applied
+kubectl get configmaps,secrets -n caritas | grep <service-name>
+
+# 2. Deployment doesn't reference ConfigMaps/Secrets
+kubectl get deployment <service-name> -n caritas -o yaml | grep -A 10 envFrom
+
+# 3. Wrong or missing values in ConfigMaps/Secrets
+kubectl get configmap <service-name>-config -n caritas -o yaml
+kubectl get secret <service-name>-secrets -n caritas -o yaml
+
+# Fix:
+# 1. Apply ConfigMaps/Secrets
+kubectl apply -f configmaps/services/<service-name>-config.yaml
+kubectl apply -f secrets/services/<service-name>-secrets.yaml
+
+# 2. Verify deployment references them
+kubectl get deployment <service-name> -n caritas -o yaml | grep envFrom
+
+# 3. Restart service
+kubectl rollout restart deployment/<service-name> -n caritas
+```
+
 #### Service Returns 500 Error
 ```bash
 # Check service logs
 kubectl logs deployment/<service-name> -n caritas --tail=100
 
 # Common issues:
-# - Database connection failed
-# - Keycloak not accessible
-# - Missing environment variables
+# - Database connection failed (check DNS name in ConfigMap)
+# - Keycloak not accessible (check DNS name in ConfigMap)
+# - Missing environment variables (check ConfigMaps/Secrets)
 # - Application errors
 
 # Check environment variables
 kubectl get deployment <service-name> -n caritas -o yaml | grep -A 20 env:
+
+# Check if using DNS names (not IPs)
+kubectl get configmap <service-name>-config -n caritas -o yaml | grep -i "mariadb\|keycloak"
+# Should see: mariadb.caritas.svc.cluster.local:3306 (NOT 10.43.123.72:3306)
 ```
 
 #### Service Health Check Fails
@@ -2009,8 +2258,31 @@ curl http://127.0.0.1:<port>/actuator/health | jq .
 curl http://127.0.0.1:<port>/actuator/health/db | jq .
 curl http://127.0.0.1:<port>/actuator/health/redis | jq .
 
+# Check if service can connect to database
+kubectl logs deployment/<service-name> -n caritas | grep -i "database\|connection"
+
 # Restart service
 kubectl rollout restart deployment/<service-name> -n caritas
+```
+
+#### Configuration Validator Error Messages
+```bash
+# If you see: "CRITICAL: Missing required configuration values..."
+
+# This means ConfigurationValidator found missing configs
+# Error message will list exactly which configs are missing
+
+# Example error:
+# CRITICAL: Missing required configuration values. Please provide the following via ConfigMap/Secrets:
+#   - config 'spring.datasource.url (SPRING_DATASOURCE_URL)' is missing
+#   - config 'keycloak.auth-server-url (KEYCLOAK_AUTH_SERVER_URL)' is missing
+
+# Solution:
+# 1. Check ConfigMap exists: kubectl get configmap <service-name>-config -n caritas
+# 2. Check Secret exists: kubectl get secret <service-name>-secrets -n caritas
+# 3. Verify values are set: kubectl get configmap <service-name>-config -n caritas -o yaml
+# 4. Update ConfigMap/Secret if needed: kubectl apply -f configmaps/services/<service-name>-config.yaml
+# 5. Restart service: kubectl rollout restart deployment/<service-name> -n caritas
 ```
 
 ### 20.7 Frontend Issues
@@ -2146,8 +2418,13 @@ curl http://127.0.0.1:<port>/actuator/health
 # Kubernetes configs
 ~/online-beratung/caritas-workspace/ORISO-Kubernetes/
 
-# Database schemas
+# ConfigMaps and Secrets (REQUIRED for services)
+~/online-beratung/caritas-workspace/ORISO-Kubernetes/configmaps/services/
+~/online-beratung/caritas-workspace/ORISO-Kubernetes/secrets/services/
+
+# Database schemas (latest production schemas)
 ~/online-beratung/caritas-workspace/ORISO-Database/
+~/online-beratung/caritas-workspace/ORISO-Database/scripts/export-schemas.sh
 
 # Keycloak realm
 ~/online-beratung/caritas-workspace/ORISO-Keycloak/realm.json
@@ -2157,6 +2434,10 @@ curl http://127.0.0.1:<port>/actuator/health
 
 # Status Page (new)
 ~/online-beratung/caritas-workspace/ORISO-Status/
+
+# Production guides
+~/online-beratung/caritas-workspace/PRODUCTION_GUIDE.md
+~/online-beratung/caritas-workspace/CHANGES_SUMMARY.md
 
 # Nginx config
 kubectl get configmap oriso-nginx-config -n caritas -o yaml
@@ -2170,6 +2451,10 @@ kubectl get configmap oriso-nginx-config -n caritas -o yaml
 # SSL Certificates (managed by cert-manager)
 kubectl get certificates -n caritas
 kubectl get secrets -n caritas | grep tls
+
+# Service ConfigMaps and Secrets
+kubectl get configmaps -n caritas | grep -E "userservice|tenantservice|agencyservice|consultingtypeservice"
+kubectl get secrets -n caritas | grep -E "userservice|tenantservice|agencyservice|consultingtypeservice"
 ```
 
 ---
@@ -2204,8 +2489,10 @@ If you've followed all steps, you should now have:
 
 ### ORISO Documentation
 - **Main Guide**: This file
+- **Production Guide**: ~/caritas-workspace/PRODUCTION_GUIDE.md (ConfigMaps/Secrets setup)
+- **Changes Summary**: ~/caritas-workspace/CHANGES_SUMMARY.md (Configuration refactoring details)
 - **ORISO-Kubernetes**: ~/caritas-workspace/ORISO-Kubernetes/README.md
-- **ORISO-Database**: ~/caritas-workspace/ORISO-Database/README.md
+- **ORISO-Database**: ~/caritas-workspace/ORISO-Database/README.md (Latest production schemas)
 - **ORISO-Keycloak**: ~/caritas-workspace/ORISO-Keycloak/README.md
 - **Each Service**: See individual ORISO-*/README.md files
 
@@ -2225,13 +2512,22 @@ If you've followed all steps, you should now have:
 
 ---
 
-**Document Version**: 2.0.0  
+**Document Version**: 3.0.0  
 **Created**: October 31, 2025  
-**Last Updated**: November 5, 2025  
+**Last Updated**: November 28, 2025  
 **Platform**: ORISO (Online Beratung)  
 **Kubernetes**: k3s 1.21+  
 **OS**: Ubuntu 22.04 LTS  
-**Status**: Production Ready with HTTPS & Subdomains
+**Status**: Production Ready with ConfigMaps/Secrets & DNS-Based Service Discovery
+
+**Major Updates in v3.0.0:**
+- ✅ **ConfigMaps and Secrets**: All services now use Kubernetes ConfigMaps/Secrets instead of hardcoded values
+- ✅ **Configuration Validators**: All services validate required configuration on startup with clear error messages
+- ✅ **DNS-Based Service Discovery**: Services use Kubernetes DNS names (e.g., `mariadb.caritas.svc.cluster.local`) instead of hardcoded IPs
+- ✅ **ORISO-Database Updated**: Latest production schemas exported and organized, with automated export script
+- ✅ **Production Ready**: System follows Kubernetes best practices - configuration can be updated without rebuilding images
+- ✅ **No Hardcoded Values**: All IPs, URLs, passwords moved to ConfigMaps/Secrets
+- ✅ **Fail-Fast Validation**: Services fail immediately with helpful error messages if configuration is missing
 
 **Major Updates in v2.0.0:**
 - ✅ Complete HTTPS migration with Let's Encrypt SSL certificates

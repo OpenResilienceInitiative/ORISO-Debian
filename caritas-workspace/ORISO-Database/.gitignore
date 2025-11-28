@@ -1,0 +1,18 @@
+# Exported schemas (timestamped backups)
+mariadb/exported/
+mongodb/exported/
+postgresql/exported/
+
+# Sample data backups
+sample-data/
+
+# Temporary files
+*.tmp
+*.log
+*.swp
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
+

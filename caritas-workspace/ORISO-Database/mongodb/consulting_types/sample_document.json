@@ -1,0 +1,26 @@
+{
+  groups: [],
+  slug: 'consultingtype1',
+  excludeNonMainConsultantsFromTeamSessions: false,
+  lockedAgencies: false,
+  consultantBoundedToConsultingType: false,
+  sendFurtherStepsMessage: true,
+  sendSaveSessionDataMessage: true,
+  initializeFeedbackChat: false,
+  isPeerChat: false,
+  languageFormal: true,
+  roles: { consultant: { defaultRole: [ 'consultant' ] } },
+  registration: {
+    minPostcodeSize: 5,
+    autoSelectAgency: false,
+    autoSelectPostcode: false,
+    notes: {},
+    mandatoryFields: { age: false, state: false }
+  },
+  urls: {},
+  showAskerProfile: false,
+  isVideoCallAllowed: true,
+  isSubsequentRegistrationAllowed: false,
+  isAnonymousConversationAllowed: false,
+  _class: 'de.caritas.cob.consultingtypeservice.api.model.ConsultingTypeEntity'
+}
