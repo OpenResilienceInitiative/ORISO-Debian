@@ -20,6 +20,8 @@
 - ✅ **ORISO-Database Updated**: Latest production schemas exported and organized with automated export script
 - ✅ **Update Without Rebuild**: Configuration can be updated via ConfigMaps/Secrets without rebuilding images
 - ✅ **Fail-Fast Validation**: Services fail immediately with helpful errors if configuration is missing
+- ✅ **Helm Charts**: MariaDB deployment now uses Helm charts with automatic schema initialization (see Section 9.1.1)
+- ✅ **Helm-Based Schema Management**: SQL schemas are versioned with Helm charts, preventing deployment breakage when schemas are updated
 
 **⚠️ IMPORTANT**: Section 9.5 (ConfigMaps/Secrets) is **REQUIRED** before deploying backend services. Services will fail to start without proper configuration.
 
@@ -434,7 +436,9 @@ kubectl get nodes
 kubectl get pods --all-namespaces
 ```
 
-### 4.4 Install Helm (for SignOZ, optional)
+### 4.4 Install Helm (Required for MariaDB Helm Charts & SignOZ)
+
+**Helm is now required for MariaDB deployment with automatic schema initialization.**
 
 ```bash
 # Install Helm
@@ -443,10 +447,12 @@ curl https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
 # Verify Helm
 helm version
 
-# Add Helm repos
+# Add Helm repos (for optional components like SignOZ)
 helm repo add bitnami https://charts.bitnami.com/bitnami
 helm repo update
 ```
+
+**Note**: ORISO MariaDB Helm chart is included in `ORISO-Kubernetes/helm/charts/mariadb/` and doesn't require external Helm repositories.
 
 ### 4.5 Install Additional Tools
 
@@ -862,13 +868,62 @@ kubectl get pods -n caritas | grep -E "mariadb|mongodb"
 
 **⚠️ IMPORTANT**: ORISO-Database repository contains the latest production schemas exported from the running system.
 
+**Two deployment options available:**
+
+#### Option A: Helm Chart Deployment (Recommended) ⭐ **NEW**
+
+**Benefits:**
+- ✅ SQL schemas versioned with Helm chart
+- ✅ Automatic schema initialization via Helm hooks
+- ✅ No breaking deployments when schemas are updated
+- ✅ `helm upgrade` automatically applies latest schemas
+- ✅ Production-ready Helm best practices
+
+```bash
+cd ~/online-beratung/caritas-workspace/ORISO-Kubernetes/helm
+
+# Sync latest SQL schemas from ORISO-Database to Helm chart
+./sync-schemas.sh
+
+# Install MariaDB with Helm (includes automatic schema initialization)
+helm install mariadb ./charts/mariadb --namespace caritas --create-namespace
+
+# Verify MariaDB is running
+kubectl get pods -n caritas | grep mariadb
+
+# Check init job status (applies schemas automatically)
+kubectl get jobs -n caritas | grep mariadb-init
+kubectl logs -n caritas job/mariadb-init-databases
+
+# Verify databases and schemas
+MARIADB_POD=$(kubectl get pods -n caritas -l app=mariadb -o jsonpath="{.items[0].metadata.name}")
+kubectl exec -it -n caritas $MARIADB_POD -- mysql -u root -proot -e "SHOW DATABASES;"
+```
+
+**Updating Schemas (when ORISO-Database schemas change):**
+```bash
+# 1. Sync updated SQL files to Helm chart
+cd ~/online-beratung/caritas-workspace/ORISO-Kubernetes/helm
+./sync-schemas.sh
+
+# 2. Upgrade Helm release (automatically applies new schemas)
+helm upgrade mariadb ./charts/mariadb --namespace caritas
+
+# 3. Verify new schemas applied
+kubectl logs -n caritas job/mariadb-init-databases
+```
+
+**See**: `ORISO-Kubernetes/helm/README.md` and `ORISO-Kubernetes/helm/HELM_GUIDE.md` for detailed Helm documentation.
+
+#### Option B: Manual Setup (Legacy)
+
 ```bash
 cd ~/online-beratung/caritas-workspace/ORISO-Database
 
-# Option A: Run master setup script (recommended)
+# Run master setup script
 ./scripts/setup/00-master-setup.sh
 
-# Option B: Manual setup
+# Or manual setup:
 
 # Get MariaDB pod
 MARIADB_POD=$(kubectl get pods -n caritas -l app=mariadb -o jsonpath="{.items[0].metadata.name}")
