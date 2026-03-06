@@ -1,0 +1,29 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: oriso-mariadb-client-config
+data:
+  # phpMyAdmin loads this automatically (in addition to its default config).
+  # We keep secrets out of this ConfigMap (they come from env vars).
+  config.user.inc.php: |
+    <?php
+    $i = 1;
+    $cfg['Servers'][$i]['auth_type'] = 'config';
+    $cfg['Servers'][$i]['host'] = getenv('PMA_HOST') ?: 'oriso-platform-mariadb.caritas.svc.cluster.local';
+    $cfg['Servers'][$i]['port'] = getenv('PMA_PORT') ?: '3306';
+    $cfg['Servers'][$i]['user'] = getenv('PMA_USER') ?: '';
+    $cfg['Servers'][$i]['password'] = getenv('PMA_PASSWORD') ?: '';
+    $cfg['Servers'][$i]['AllowNoPassword'] = false;
+    $cfg['Servers'][$i]['compress'] = false;
+    // Hide internal/system databases from navigation.
+    $cfg['Servers'][$i]['hide_db'] = '^(information_schema|performance_schema|mysql|sys|RECOVER_YOUR_DATA)$';
+
+    // Required for phpMyAdmin, provided via env var from a Secret.
+    $cfg['blowfish_secret'] = getenv('PMA_BLOWFISH_SECRET') ?: 'change-me';
+
+    // Reduce unnecessary outbound reporting.
+    $cfg['SendErrorReports'] = 'never';
+    $cfg['CheckConfigurationPermissions'] = false;
+    ?>
+
+

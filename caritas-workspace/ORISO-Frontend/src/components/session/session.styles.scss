@@ -1,0 +1,357 @@
+$navHeight: $grid-base-nine;
+$navWidth: $grid-base-twelve;
+$contentWidth: calc((100vw - #{$navWidth}) / 12 * 8);
+$textareaHeight: 72px;
+$sessionHeaderHeight: 85px;
+$unreadButtonSize: 18px;
+$session-scroll-to-bottom-radius: $button-border-radius !default;
+
+.session,
+.enquiry__wrapper {
+	position: relative;
+	flex: 1;
+	display: flex;
+	flex-direction: column;
+	min-height: 0;
+	min-width: 0;
+	background-color: #ffffff;
+	overflow: hidden;
+	
+	.messageSubmit__wrapper {
+		position: absolute;
+		bottom: 0;
+		left: 0;
+		right: 0;
+		z-index: 1000;
+
+		// On mobile, use fixed positioning so input stays above keyboard
+		@media screen and (max-width: 899px) {
+			position: fixed;
+			bottom: 0;
+			left: 0;
+			right: 0;
+			// Account for safe area insets on mobile devices
+			padding-bottom: env(safe-area-inset-bottom, 0);
+		}
+	}
+
+	.session__submit-interface--withThread {
+		right: 520px;
+
+		@media screen and (max-width: 899px) {
+			right: 0;
+		}
+	}
+
+	& > div:first-child {
+		flex: 0 0 auto; /* Header stays fixed height */
+	}
+	
+	& > div:nth-child(2) {
+		flex: 1; /* Content takes remaining space */
+		min-height: 0;
+		position: relative;
+	}
+
+	.session__content.drag-in-progress * {
+		pointer-events: none;
+	}
+
+	&__wrapper {
+		flex: 1;
+		width: 100%;
+		flex-direction: row;
+		display: flex;
+		min-width: 0;
+	}
+
+	.messageSubmit__wrapper {
+		z-index: 2;
+
+		&--withTyping {
+			position: absolute;
+			bottom: 0;
+			left: 0;
+			right: 0;
+			z-index: 1000;
+
+			// On mobile, use fixed positioning so input stays above keyboard
+			@media screen and (max-width: 899px) {
+				position: fixed;
+				bottom: 0;
+				left: 0;
+				right: 0;
+				padding-bottom: env(safe-area-inset-bottom, 0);
+			}
+		}
+	}
+
+	.messageItem {
+		.enquiryPreview {
+			&__divider {
+				padding-top: 5px;
+			}
+
+			&__message {
+				white-space: pre-wrap;
+			}
+		}
+
+		&--right {
+			text-align: right;
+		}
+	}
+
+	&__preview {
+		height: 100%;
+	}
+
+	&__acceptance {
+		text-align: center;
+		margin: $grid-base-four 0;
+	}
+
+	&__content {
+		position: absolute;
+		top: 0;
+		left: 0;
+		right: 0;
+		bottom: 0;
+		overflow-x: hidden;
+		overflow-y: auto;
+		padding: $grid-base-three $grid-base-two 200px;
+		background-color: $session-content-background-color;
+
+		@include breakpoint($fromMedium) {
+			padding: $grid-base-three $grid-base-three 200px;
+		}
+	}
+
+	&__content--withThread {
+		@include breakpoint($fromMedium) {
+			padding-right: 520px;
+		}
+	}
+
+	&__threadPanel {
+		position: absolute;
+		top: 0;
+		right: 0;
+		bottom: 0;
+		width: 520px;
+		background: #fff;
+		border-left: 1px solid #eee;
+		display: flex;
+		flex-direction: column;
+		z-index: 5;
+
+		@media screen and (max-width: 899px) {
+			position: fixed;
+			width: 100%;
+			z-index: 2000;
+		}
+	}
+
+	&__threadHeader {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		padding: $grid-base-two $grid-base-three;
+		border-bottom: 1px solid #eee;
+	}
+
+	&__threadTitle {
+		font-weight: 600;
+	}
+
+	&__threadClose {
+		background: none;
+		border: none;
+		font-size: 20px;
+		cursor: pointer;
+		color: $text-low-emphasis;
+	}
+
+	&__threadBody {
+		flex: 1;
+		overflow-y: auto;
+		padding: $grid-base-two $grid-base-two 120px;
+	}
+
+	&__threadInput {
+		border-top: 1px solid #eee;
+		padding: $grid-base-two;
+	}
+
+	&__supervisorInputNote {
+		margin: 0 $grid-base-three 5px;
+		font-size: $font-size-secondary;
+		color: $text-low-emphasis;
+	}
+
+	&__supervisionReason {
+		display: flex;
+		max-width: 650px;
+		margin: 0px auto;
+		padding: $grid-base-two $grid-base-three;
+		border-radius: 8px;
+		background-color: rgba(198, 40, 40, 0.12);
+		border: 1px solid rgba(198, 40, 40, 0.2);
+		color: #3f373f;
+	}
+
+	&__supervisionReasonTitle {
+		font-weight: 600;
+		margin-bottom: 6px;
+	}
+
+	&__supervisionReasonText {
+		font-size: 14px;
+		margin-left: 16px;
+	}
+
+	// Shadow removed from submit interface for clean Element-like UI
+
+	&__scrollToBottom {
+		position: fixed;
+		right: $grid-base-three;
+		bottom: calc(#{$grid-base} * 19);
+		z-index: 3;
+		animation: appear-animation 0.3s;
+
+		@include breakpoint($fromLarge) {
+			right: 33px;
+		}
+
+		&--disabled {
+			animation: disappear-animation 0.3s;
+			animation-fill-mode: forwards;
+		}
+	}
+
+	&__unreadCount {
+		display: flex;
+		justify-content: center;
+		align-items: center;
+		position: absolute;
+		top: -3px;
+		right: -9px;
+		width: $unreadButtonSize;
+		height: $unreadButtonSize;
+		background-color: var(--skin-color-primary, $primary);
+		font-weight: $font-weight-medium;
+		font-size: 10px;
+		color: $white;
+		border-radius: 100%;
+		z-index: 1;
+		pointer-events: none;
+		animation: bounce-appear-animation 0.3s;
+	}
+
+	&--empty {
+		justify-content: center;
+		align-items: center;
+		display: none;
+
+		@include breakpoint($fromLarge) {
+			display: flex;
+		}
+	}
+
+	&__forgotSomething {
+		padding: $grid-base-two $grid-base-three;
+		text-align: center;
+		color: $tertiary;
+		margin: $grid-base-two 0;
+		
+		.text {
+			font-style: italic;
+			display: none;
+		}
+	}
+}
+
+@keyframes appear-animation {
+	0% {
+		opacity: 0;
+	}
+
+	100% {
+		opacity: 1;
+	}
+}
+
+@keyframes bounce-appear-animation {
+	0% {
+		opacity: 0.4;
+		transform: scale(0.8);
+	}
+
+	80% {
+		opacity: 1;
+		transform: scale(1.2);
+	}
+
+	100% {
+		transform: scale(1);
+	}
+}
+
+@keyframes disappear-animation {
+	0% {
+		opacity: 1;
+	}
+
+	100% {
+		opacity: 0;
+	}
+}
+
+.app__wrapper--embeddedNotifications {
+	.contentWrapper__detail {
+		overflow: hidden;
+	}
+
+	.session {
+		height: 100%;
+		min-height: 0;
+	}
+
+	.session__content {
+		overscroll-behavior: contain;
+		overflow-y: auto;
+		-webkit-overflow-scrolling: touch;
+	}
+
+	#session-scroll-container {
+		overflow-y: auto;
+		overflow-x: hidden;
+		overscroll-behavior: contain;
+		-webkit-overflow-scrolling: touch;
+	}
+
+	.session__content--withThread {
+		padding-right: $grid-base-three;
+	}
+
+	.session__threadPanel {
+		left: 0;
+		right: 0;
+		width: 100%;
+		border-left: none;
+	}
+
+	.session__submit-interface--withThread {
+		right: 0;
+	}
+
+	/* Header is hidden in embedded mode; ensure composer never becomes a flex filler. */
+	.messageSubmit__wrapper,
+	.session__submit-interface {
+		flex: 0 0 auto !important;
+	}
+
+	.session__threadClose {
+		display: none;
+	}
+}

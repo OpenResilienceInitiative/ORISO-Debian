@@ -1,0 +1,66 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: oriso-mariadb-client
+  labels:
+    app: oriso-mariadb-client
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: oriso-mariadb-client
+  template:
+    metadata:
+      labels:
+        app: oriso-mariadb-client
+    spec:
+      containers:
+        - name: phpmyadmin
+          image: phpmyadmin:5.2-apache
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 80
+          env:
+            - name: PMA_HOST
+              value: oriso-platform-mariadb.caritas.svc.cluster.local
+            - name: PMA_PORT
+              value: "3306"
+            - name: PMA_USER
+              valueFrom:
+                secretKeyRef:
+                  name: oriso-mariadb-client-db-credentials
+                  key: PMA_USER
+            - name: PMA_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: oriso-mariadb-client-db-credentials
+                  key: PMA_PASSWORD
+            - name: PMA_BLOWFISH_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: oriso-mariadb-client-db-credentials
+                  key: PMA_BLOWFISH_SECRET
+          volumeMounts:
+            - name: config
+              mountPath: /etc/phpmyadmin/config.user.inc.php
+              subPath: config.user.inc.php
+              readOnly: true
+          readinessProbe:
+            httpGet:
+              path: /
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /
+              port: http
+            initialDelaySeconds: 15
+            periodSeconds: 20
+      volumes:
+        - name: config
+          configMap:
+            name: oriso-mariadb-client-config
+
+

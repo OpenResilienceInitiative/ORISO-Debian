@@ -1,0 +1,253 @@
+---
+# Kubernetes Job for creating system users
+# Portable and works on all Kubernetes systems (managed clusters, k3s, etc.)
+# Uses ConfigMaps and Secrets for configuration (no hardcoded values)
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: create-system-users
+  namespace: caritas
+  annotations:
+    # Can be run manually or via Helm hooks
+    "helm.sh/hook": post-install,post-upgrade
+    "helm.sh/hook-weight": "5"
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+spec:
+  ttlSecondsAfterFinished: 300  # Auto-delete after 5 minutes
+  backoffLimit: 3
+  template:
+    metadata:
+      labels:
+        app: create-system-users
+    spec:
+      restartPolicy: OnFailure
+      serviceAccountName: system-users-job
+      containers:
+      - name: create-users
+        image: bitnami/kubectl:latest  # Portable kubectl image
+        command:
+        - /bin/sh
+        - -c
+        - |
+          set -e
+          
+          # Get configuration from ConfigMap (no hardcoded values)
+          NAMESPACE=$(kubectl get configmap system-users-config -n caritas -o jsonpath='{.data.namespace}' || echo "caritas")
+          MATRIX_DOMAIN=$(kubectl get configmap system-users-config -n $NAMESPACE -o jsonpath='{.data.matrixDomain}')
+          MATRIX_REGISTRATION_SECRET=$(kubectl get configmap system-users-config -n $NAMESPACE -o jsonpath='{.data.matrixRegistrationSecret}')
+          
+          if [ -z "$MATRIX_DOMAIN" ] || [ -z "$MATRIX_REGISTRATION_SECRET" ]; then
+            echo "ERROR: Required configuration missing from ConfigMap"
+            exit 1
+          fi
+          
+          # Wait for Matrix pod to be ready
+          echo "Waiting for Matrix pod..."
+          MATRIX_POD=""
+          for i in $(seq 1 30); do
+            MATRIX_POD=$(kubectl get pods -n $NAMESPACE -l app=matrix-synapse -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || echo "")
+            if [ -n "$MATRIX_POD" ]; then
+              READY=$(kubectl get pod -n $NAMESPACE $MATRIX_POD -o jsonpath='{.status.conditions[?(@.type=="Ready")].status}' 2>/dev/null || echo "False")
+              if [ "$READY" = "True" ]; then
+                break
+              fi
+            fi
+            sleep 2
+          done
+          
+          if [ -z "$MATRIX_POD" ]; then
+            echo "ERROR: Matrix pod not found or not ready"
+            exit 1
+          fi
+          
+          echo "Found Matrix pod: $MATRIX_POD"
+          
+          # Get passwords from Secrets (secure)
+          CARITAS_ADMIN_PASS=$(kubectl get secret system-users-secrets -n $NAMESPACE -o jsonpath='{.data.caritasAdminPassword}' | base64 -d)
+          ORISO_CALL_ADMIN_PASS=$(kubectl get secret system-users-secrets -n $NAMESPACE -o jsonpath='{.data.orisoCallAdminPassword}' | base64 -d)
+          GROUP_CHAT_SYSTEM_PASS=$(kubectl get secret system-users-secrets -n $NAMESPACE -o jsonpath='{.data.groupChatSystemPassword}' | base64 -d)
+          
+          if [ -z "$CARITAS_ADMIN_PASS" ] || [ -z "$ORISO_CALL_ADMIN_PASS" ] || [ -z "$GROUP_CHAT_SYSTEM_PASS" ]; then
+            echo "ERROR: Required passwords missing from Secrets"
+            exit 1
+          fi
+          
+          echo "Creating system users with domain: $MATRIX_DOMAIN"
+          
+          # Function to create Matrix user using Matrix's built-in command
+          create_matrix_user() {
+            local username=$1
+            local password=$2
+            local display_name=$3
+            local is_admin=$4
+            
+            local matrix_user_id="@${username}:${MATRIX_DOMAIN}"
+            echo "Creating Matrix user: $matrix_user_id"
+            
+            # Use Matrix's register_new_matrix_user command (proper method)
+            ADMIN_FLAG=""
+            if [ "$is_admin" = "true" ]; then
+              ADMIN_FLAG="-a"
+            fi
+            
+            RESULT=$(kubectl exec -n $NAMESPACE $MATRIX_POD -c synapse -- register_new_matrix_user \
+              $ADMIN_FLAG \
+              -u "$username" \
+              -p "$password" \
+              -k "$MATRIX_REGISTRATION_SECRET" \
+              http://localhost:8008 \
+              2>&1 || echo "FAILED")
+            
+            if echo "$RESULT" | grep -qi "already exists\|already registered"; then
+              echo "  ✓ User already exists: $matrix_user_id"
+            elif echo "$RESULT" | grep -qi "success\|created\|registered"; then
+              echo "  ✓ Created: $matrix_user_id"
+            else
+              echo "  ✗ Failed: $RESULT"
+              return 1
+            fi
+          }
+          
+          # Create Matrix users
+          create_matrix_user "caritas_admin" "$CARITAS_ADMIN_PASS" "Caritas System Admin" "true" || true
+          create_matrix_user "oriso_call_admin" "$ORISO_CALL_ADMIN_PASS" "ORISO Call Admin" "true" || true
+          create_matrix_user "group-chat-system" "$GROUP_CHAT_SYSTEM_PASS" "Group Chat System" "true" || true
+          
+          # Wait for MariaDB to be ready
+          echo "Waiting for MariaDB pod..."
+          MARIADB_POD=""
+          for i in $(seq 1 30); do
+            MARIADB_POD=$(kubectl get pods -n $NAMESPACE -l app=mariadb -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || echo "")
+            if [ -n "$MARIADB_POD" ]; then
+              READY=$(kubectl get pod -n $NAMESPACE $MARIADB_POD -o jsonpath='{.status.conditions[?(@.type=="Ready")].status}' 2>/dev/null || echo "False")
+              if [ "$READY" = "True" ]; then
+                break
+              fi
+            fi
+            sleep 2
+          done
+          
+          if [ -z "$MARIADB_POD" ]; then
+            echo "ERROR: MariaDB pod not found or not ready"
+            exit 1
+          fi
+          
+          echo "Found MariaDB pod: $MARIADB_POD"
+          
+          # Get MariaDB root password from secret (if exists) or use default
+          MARIADB_ROOT_PASS=$(kubectl get secret mariadb-secrets -n $NAMESPACE -o jsonpath='{.data.MYSQL_ROOT_PASSWORD}' 2>/dev/null | base64 -d || echo "root")
+          
+          # Function to create MariaDB user
+          create_mariadb_user() {
+            local user_id=$1
+            local username=$2
+            local email=$3
+            local first_name=$4
+            local last_name=$5
+            local matrix_user_id=$6
+            local matrix_password=$7
+            
+            echo "Creating MariaDB user: $user_id"
+            
+            kubectl exec -n $NAMESPACE $MARIADB_POD -- mysql -u root -p"$MARIADB_ROOT_PASS" <<EOF
+          USE userservice;
+          INSERT INTO user (
+              user_id, username, email,
+              create_date, update_date, matrix_user_id, matrix_password
+          ) VALUES (
+              '${user_id}', '${username}', '${email}',
+              UTC_TIMESTAMP(), UTC_TIMESTAMP(), '${matrix_user_id}', '${matrix_password}'
+          ) ON DUPLICATE KEY UPDATE
+              username = '${username}',
+              email = '${email}',
+              matrix_user_id = '${matrix_user_id}',
+              matrix_password = '${matrix_password}',
+              update_date = UTC_TIMESTAMP();
+          EOF
+            
+            if [ $? -eq 0 ]; then
+              echo "  ✓ Created/Updated: $user_id"
+            else
+              echo "  ✗ Failed to create: $user_id"
+              return 1
+            fi
+          }
+          
+          # Create MariaDB users
+          create_mariadb_user \
+            "caritas_admin" "caritas_admin" "caritas_admin@caritas.local" "Caritas" "Admin" \
+            "@caritas_admin:${MATRIX_DOMAIN}" "$CARITAS_ADMIN_PASS" || true
+          
+          create_mariadb_user \
+            "oriso_call_admin" "oriso_call_admin" "oriso_call_admin@caritas.local" "ORISO" "Call Admin" \
+            "@oriso_call_admin:${MATRIX_DOMAIN}" "$ORISO_CALL_ADMIN_PASS" || true
+          
+          create_mariadb_user \
+            "group-chat-system" "group-chat-system" "group-chat-system@caritas.local" "Group" "Chat System" \
+            "@group-chat-system:${MATRIX_DOMAIN}" "$GROUP_CHAT_SYSTEM_PASS" || true
+          
+          echo "✅ System users creation completed"
+---
+# ConfigMap for configuration (no secrets, no hardcoded values)
+# Values should be set per environment
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: system-users-config
+  namespace: caritas
+data:
+  namespace: "caritas"
+  # Matrix domain - should be configured per environment
+  matrixDomain: "oriso-dev.site"  # Matrix server domain (from Helm global values)
+  # Matrix registration secret - should match Matrix homeserver.yaml
+  matrixRegistrationSecret: "caritas-registration-secret-2025"  # TODO: Move to Secret
+---
+# Secret for passwords (secure)
+# Values should be set per environment
+apiVersion: v1
+kind: Secret
+metadata:
+  name: system-users-secrets
+  namespace: caritas
+type: Opaque
+stringData:
+  # TODO: These should be generated or provided per environment
+  caritasAdminPassword: "@CaritasAdmin2025!"
+  orisoCallAdminPassword: "@OrisoCallAdmin2025!"
+  groupChatSystemPassword: "@GroupChatSystem2025!"
+---
+# ServiceAccount for the Job
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: system-users-job
+  namespace: caritas
+---
+# Role with minimal required permissions
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: system-users-job
+  namespace: caritas
+rules:
+- apiGroups: [""]
+  resources: ["pods", "configmaps", "secrets"]
+  verbs: ["get", "list"]
+- apiGroups: [""]
+  resources: ["pods/exec"]
+  verbs: ["create"]
+---
+# RoleBinding
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: system-users-job
+  namespace: caritas
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: system-users-job
+subjects:
+- kind: ServiceAccount
+  name: system-users-job
+  namespace: caritas
